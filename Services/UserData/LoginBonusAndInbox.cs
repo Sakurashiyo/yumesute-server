@@ -24,32 +24,23 @@ sealed partial class UserDataService
 
         await using var connection = await database.OpenConnectionAsync();
 
-        var alreadyReceived = false;
-        await using (var command = new NpgsqlCommand(
-            """
-            select shown_at, status
-            from user_login_bonus_states
-            where "userId" = $1
-            """,
-            connection))
-        {
-            command.Parameters.AddWithValue(userId.Value);
-            await using var reader = await command.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                var shownAt = reader.GetDateTime(0);
-                var status = reader.GetInt32(1);
-                alreadyReceived = status == 1 && shownAt >= windowStartUtc;
-            }
-        }
-
-        if (alreadyReceived)
-        {
-            return new LoginBonusReceiveResult(Array.Empty<object?>(), Array.Empty<object?>());
-        }
-
         var bootstrapKeys = activeRewards.Select(reward => $"login-bonus-{windowKey}-{reward.Id}").ToArray();
         await using var transaction = await connection.BeginTransactionAsync();
+        // 条件更新同时锁定领取状态，重复或并发请求不能再次发奖。
+        await using (var claim = new NpgsqlCommand(
+            """
+            update user_login_bonus_states
+            set current_count = current_count + 1, total_count = total_count + 1,
+                shown_at = $3, status = 1, updated_at = now()
+            where "userId" = $1 and (status <> 1 or shown_at < $2)
+            """, connection, transaction))
+        {
+            claim.Parameters.AddWithValue(userId.Value);
+            claim.Parameters.AddWithValue(windowStartUtc);
+            claim.Parameters.AddWithValue(now.UtcDateTime);
+            if (await claim.ExecuteNonQueryAsync() == 0)
+                return new LoginBonusReceiveResult(Array.Empty<object?>(), Array.Empty<object?>());
+        }
         try
         {
             foreach (var reward in activeRewards)
@@ -81,22 +72,6 @@ sealed partial class UserDataService
                     payload,
                     bootstrapKey);
             }
-
-            await ExecuteAsync(
-                connection,
-                transaction,
-                """
-                insert into user_login_bonus_states (id, "userId", current_count, total_count, shown_at, status)
-                values ($1, $2, 1, 1, now(), 1)
-                on conflict ("userId") do update set
-                  current_count = user_login_bonus_states.current_count + 1,
-                  total_count = user_login_bonus_states.total_count + 1,
-                  shown_at = now(),
-                  status = 1,
-                  updated_at = now()
-                """,
-                UserScopedId(userId.Value, 10901),
-                userId.Value);
 
             await transaction.CommitAsync();
         }
@@ -460,7 +435,7 @@ sealed partial class UserDataService
             null,
             reward.DisplayCategory,
             null,
-            null
+            reward.Id == 10006 ? BuildRegularLoginBonusSpineGroup() : null
         };
     }
 }

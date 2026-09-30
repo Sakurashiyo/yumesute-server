@@ -1169,12 +1169,14 @@ static class DatabaseMigrator
       id bigint primary key,
       "userId" bigint not null references user_accounts(id) on delete cascade,
       auto_play_times integer not null default 0 check (auto_play_times >= 0),
-      daily_lesson_times integer not null default 1 check (daily_lesson_times >= 0),
+      daily_lesson_times integer not null default 0 check (daily_lesson_times >= 0),
       last_refreshed_at timestamptz not null,
       music_course_free_challenge_times integer not null default 0 check (music_course_free_challenge_times >= 0),
       updated_at timestamptz not null default now(),
       unique("userId")
     );
+
+    alter table user_daily_limits alter column daily_lesson_times set default 0;
 
     create table if not exists user_notification_states (
       "userId" bigint primary key references user_accounts(id) on delete cascade,
@@ -1245,6 +1247,17 @@ static class DatabaseMigrator
       payload jsonb not null default '{}'::jsonb,
       updated_at timestamptz not null default now(),
       primary key ("userId", lesson_master_id)
+    );
+
+    create table if not exists user_lesson_sessions (
+      "userId" bigint primary key references user_accounts(id) on delete cascade,
+      character_base_master_id bigint not null,
+      live_master_id bigint not null,
+      party_snapshot bytea not null,
+      started_at timestamptz not null default now(),
+      completion bytea,
+      finish_hash bytea,
+      check ((completion is null) = (finish_hash is null))
     );
 
     create table if not exists user_live_course_states (

@@ -163,3 +163,5 @@ erDiagram
 `user_login_bonus_states` 保存 key 109 的登录/活动展示状态。
 `user_notification_states` 保存 key 94 的通知已读状态。
 `user_game_hint_reads` 保存 key 66 的游戏提示已读状态。
+
+`user_live_lesson_party_states` 保存每个账号、角色的稽古编队，以及领队位置、历史高分和已领取奖励门槛。`user_lesson_sessions` 保存当前稽古角色、谱面、开始时间、开始时的队伍及卡片快照、完成响应和结算摘要；每个账号一行，用于定位不带角色 ID 的结算请求并保证重试幂等。

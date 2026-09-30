@@ -2,6 +2,7 @@ static partial class ApiEndpointMappings
 {
     static void MapGameplayEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
+        MapLessonEndpoints(app, state, codec, logger);
         app.MapMethods("/localap/api/Lives/UpdateClearLamps/{multiLiveId:long}", new[] { "GET", "POST" }, async (HttpContext context, long multiLiveId) =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
@@ -146,11 +147,12 @@ static partial class ApiEndpointMappings
         app.MapPost("/localap/api/Lives/StartLesson", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
-            await logger.LogAsync($"lives-start-lesson payload={ValueFormatter.Format(body)}");
+            var lesson = await state.UserDataService.StartLessonLiveAsync(context, body);
+            await logger.LogAsync("lives-start-lesson outcome=success");
             await codec.WriteApiFramesAsync(
                 context,
-                GameResults.LiveStartLessonResult(body),
-                Array.Empty<object?>(),
+                lesson.Result,
+                lesson.Present,
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 "result-lz4-five-frame");
@@ -327,18 +329,6 @@ static partial class ApiEndpointMappings
                 context,
                 GameResults.MissionPassReceiveRewardsResult(missionPassId),
                 GameResults.MissionPassReceiveRewardsPresentData(missionPassId),
-                Array.Empty<object?>(),
-                Array.Empty<object?>());
-        });
-
-        app.MapPost("/localap/api/Lessons/{lessonMasterId:long}/CreateParty", async (HttpContext context, long lessonMasterId) =>
-        {
-            var body = await codec.ReadRequestBodyAsync(context);
-            await logger.LogAsync($"lessons-create-party lessonMasterId={lessonMasterId} payload={ValueFormatter.Format(body)}");
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.LessonCreatePartyResult(),
-                GameResults.LessonCreatePartyPresentData(lessonMasterId),
                 Array.Empty<object?>(),
                 Array.Empty<object?>());
         });

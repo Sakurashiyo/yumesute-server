@@ -58,29 +58,4 @@ static partial class GameResults
         return new object?[] { true };
     }
 
-    public static object?[] LessonCreatePartyPresentData(long lessonMasterId)
-    {
-        return new object?[]
-        {
-            new object?[]
-            {
-                39,
-                new object?[]
-                {
-                    lessonMasterId,
-                    new object?[]
-                    {
-                        new object?[] { 1, 211035564 },
-                        new object?[] { 2, null },
-                        new object?[] { 3, null },
-                        new object?[] { 4, null },
-                        new object?[] { 5, null }
-                    },
-                    0,
-                    0,
-                    0
-                }
-            }
-        };
-    }
 }

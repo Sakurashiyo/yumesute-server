@@ -63,12 +63,6 @@ dotnet run --project SiriusLocalServer.csproj
 - 抽卡系统恢复(混合为一个大的普池)
 - 解决成绩结算问题(由预设改为实际的计算公式(这个有点难…不确定能不能解决))
 
-## 已知问题
-- 游戏注册/登录后无法进入主页(已知原因:客户端在等待realtime，目前可能暂未实现需要将客户端的这个部分给解决掉)
-- 成绩结算奖励为固定预设奖励
-- 乐曲商店货币为预设值
-- etc.
-
 ## 许可与贡献
 
 ### 许可证
@@ -100,3 +94,19 @@ dotnet run --project SiriusLocalServer.csproj
 请不要在 Issue、Pull Request 或提交记录中直接上传未经授权的游戏资源、密钥、访问令牌或其他不适合公开分发的内容。
 
 贡献到本项目的代码将按照本项目所采用的开源许可证进行发布。
+
+## 稽古（Lessons）
+
+支持客户端的五条 POST 路由：
+
+- `/api/Lessons/{characterBaseMasterId}/CreateParty`
+- `/api/Lessons/{characterBaseMasterId}/SetParty`
+- `/api/Lessons/{characterBaseMasterId}/SetPartyLeader/{leaderPosition}`
+- `/api/Lessons/{characterBaseMasterId}/Start/{liveMasterId}`
+- `/api/Lessons/Finish`
+
+队伍保存到当前账号，登录时同步；角色必须由当前账号持有。`SetParty` 请求是 `[slots]`，每个槽位为 `[order, characterId]`，空槽位用 `0`。`Start` 请求是 `[characterBaseMasterId, liveMasterId]`，必须与路径一致；`Finish` 请求是 `[score, maxCombo, judges]`。
+
+开始时原子消耗每日一次稽古机会，日本时间每天 05:00 重置。`/api/Lives/StartLesson` 与上述开始入口共用场次，重试不会重复扣次。结算保存历史高分，按 `CharacterLessonScoreRewardMaster` 的新门槛发放奖励；重复相同结算重放成功响应，不同结算内容拒绝为冲突。当前没有配置稽古体力消耗，战力和技能参数仍沿用已有演出模板，角色及卡片引用使用开始时的真实队伍快照。
+
+成功返回五帧 MessagePack 布尔结果 `[true]` 和同步数据。业务失败返回 `[false]`：参数错误为 HTTP 400，缺失队伍为 404，次数用尽、缺失场次或场次冲突为 409；日志携带 `errorCode`，包括 `LESSON_INVALID_START`、`LESSON_INVALID_FINISH`、`LESSON_DAILY_LIMIT_REACHED`、`LESSON_SESSION_MISSING`、`LESSON_SESSION_CONFLICT`。

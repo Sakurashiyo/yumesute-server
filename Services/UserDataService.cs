@@ -26,7 +26,7 @@ sealed partial class UserDataService
         new(169, "「最終章」追加記念ポスターガチャ10連チケットログインボーナス", 1, 211432, 1, 10, false, 40, 2, new DateTimeOffset(2026, 7, 21, 1, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 8, 10, 13, 0, 0, LocalTimeOffset)),
         new(170, "「最終章」追加記念ログインボーナス", 13, 0, 1000, 7, false, 50, 2, new DateTimeOffset(2026, 7, 21, 1, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 8, 10, 13, 0, 0, LocalTimeOffset)),
         new(179, "3rd Anniversaryカウントダウンログインボーナス", 1, 210001, 3, 1, false, 1, 2, new DateTimeOffset(2026, 7, 22, 8, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 7, 23, 8, 0, 0, LocalTimeOffset)),
-        new(10006, "ログインボーナス", 13, 0, 300, 15, true, 1000, 1, new DateTimeOffset(2026, 7, 17, 23, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 9, 29, 22, 0, 0, LocalTimeOffset)),
+        new(10006, "ログインボーナス", 13, 0, 300, 15, true, 1000, 1, new DateTimeOffset(2026, 7, 17, 23, 0, 0, LocalTimeOffset), DateTimeOffset.MaxValue),
         new(35013, "最終章 ログインボーナス", 1, 111103, 5, 7, false, 100, 2, new DateTimeOffset(2026, 7, 21, 1, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 7, 31, 13, 0, 0, LocalTimeOffset))
     };
 
@@ -69,6 +69,7 @@ sealed partial class UserDataService
         var presentData = new List<object?>();
         presentData.AddRange(BuildLoginMissionRefreshPresentData());
         presentData.Add(DataObject(0, await ReadUserAsync(connection, userId.Value)));
+        presentData.Add(DataObject(109, await ReadDailyLimitAsync(connection, userId.Value)));
         return presentData.ToArray();
     }
 
@@ -498,7 +499,7 @@ sealed partial class UserDataService
             transaction,
             """
             insert into user_daily_limits (id, "userId", auto_play_times, daily_lesson_times, last_refreshed_at, music_course_free_challenge_times)
-            values ($1, $2, 0, 1, $3, 0)
+            values ($1, $2, 0, 0, $3, 0)
             on conflict ("userId") do nothing
             """,
             UserScopedId(userId, 10902),
@@ -615,6 +616,7 @@ sealed partial class UserDataService
         var dugongRunStates = await ReadDugongRunStatesAsync(connection, userId);
         var parties = await ReadPartiesAsync(connection, userId);
         var partySlots = await ReadPartySlotsAsync(connection, userId);
+        var lessonParties = await ReadLessonPartiesAsync(connection, userId);
         var notification = await ReadNotificationAsync(connection, userId);
         await using (var cleanupCommand = new NpgsqlCommand(
             """
@@ -659,6 +661,7 @@ sealed partial class UserDataService
         result.AddRange(characterBases.Select(value => DataObject(5, value)));
         result.AddRange(parties.Select(value => DataObject(6, value)));
         result.AddRange(partySlots.Select(value => DataObject(7, value)));
+        result.AddRange(lessonParties.Select(value => DataObject(39, value)));
         result.AddRange(costumes.Select(value => DataObject(43, value)));
         result.AddRange(itemPossessions.Select(value => DataObject(27, value)));
         result.AddRange(livePlayResults.Select(value => DataObject(24, value)));
@@ -929,7 +932,7 @@ sealed partial class UserDataService
 
         AddIfMissing(67, new object?[] { userId, 0.0, 0.0 });
         AddIfMissing(97, BuildInitialPlayerSetting(userId));
-        AddIfMissing(109, new object?[] { UserScopedId(userId, 10902), 0, 1, CurrentDailyResetBoundaryUtc(DateTimeOffset.UtcNow).UtcDateTime, 0 });
+        AddIfMissing(109, new object?[] { UserScopedId(userId, 10902), 0, 0, CurrentDailyResetBoundaryUtc(DateTimeOffset.UtcNow).UtcDateTime, 0 });
         AddIfMissing(148, new object?[] { userId, null, true });
         AddIfMissing(174, new object?[] { 1, "アルバム1", 1 });
         AddIfMissing(174, new object?[] { 2, "アルバム2", 2 });
