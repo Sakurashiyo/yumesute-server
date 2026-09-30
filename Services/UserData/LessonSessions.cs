@@ -53,7 +53,7 @@ sealed partial class UserDataService
             return ownedCards.TryGetValue(cardId, out var card) ? card : throw new BadHttpRequestException(PartyMemberInvalid, 400);
         }).ToArray();
         if (cards.Length == 0) throw new BadHttpRequestException(PartyMemberInvalid, 400);
-        var snapshot = new object?[] { party, cards };
+        var snapshot = new object?[] { party, cards, await ReadLessonCharacterStatusesAsync(connection, transaction, userId, cards) };
         await ExecuteAsync(connection, transaction,
             "update user_daily_limits set daily_lesson_times = daily_lesson_times + 1, updated_at = now() where \"userId\" = $1", userId);
         await ExecuteAsync(connection, transaction,

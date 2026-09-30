@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using Npgsql;
 
@@ -689,6 +689,7 @@ sealed partial class UserDataService
         result.Add(DataObject(179, inviteState));
         result.Add(DataObject(189, homeSkin));
         result.AddRange(inboxPackages.Select(value => DataObject(41, value)));
+        result.AddRange(await ReadPermanentMarketDataAsync(connection,userId));
         AddOfficialBootstrapData(result, userId);
         return BuildOfficialUserDataBatches(result, userId);
     }
@@ -705,7 +706,7 @@ sealed partial class UserDataService
         // expected by the client's data synchronizer.
         int[] inventoryTypeOrder = { 120, 4, 5, 96, 43, 101, 177, 179, 139, 183, 94, 150, 41, 27, 100, 111, 106, 107, 168, 171, 170, 176, 39, 24, 25, 90, 147, 109 };
         int[] missionTypeOrder = { 145, 146, 97, 48, 122, 154, 193, 6, 7, 166, 167, 123, 124, 125, 131, 174, 0, 1, 3, 2, 66, 67, 128, 138, 148 };
-        int[] accountTypeOrder = { 47, 45, 11, 65, 64, 102 };
+        int[] accountTypeOrder = { 47, 45, 11, 65, 64, 102, 129, 182 };
         int[] shopTypeOrder = { 108, 149, 95 };
 
         static int? UnionKey(object? item)
@@ -1637,7 +1638,7 @@ sealed partial class UserDataService
     {
         await using var command = new NpgsqlCommand(
             """
-            select free_jewel, paid_jewel, coin
+            select coin, free_jewel, paid_jewel
             from user_item_currencies
             where "userId" = $1
             """,

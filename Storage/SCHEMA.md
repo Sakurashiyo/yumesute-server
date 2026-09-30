@@ -1,4 +1,4 @@
-# 数据库结构说明
+﻿# 数据库结构说明
 
 本服务端使用 PostgreSQL 保存本地玩家数据。：
 
@@ -165,3 +165,9 @@ erDiagram
 `user_game_hint_reads` 保存 key 66 的游戏提示已读状态。
 
 `user_live_lesson_party_states` 保存每个账号、角色的稽古编队，以及领队位置、历史高分和已领取奖励门槛。`user_lesson_sessions` 保存当前稽古角色、谱面、开始时间、开始时的队伍及卡片快照、完成响应和结算摘要；每个账号一行，用于定位不带角色 ID 的结算请求并保证重试幂等。
+
+稽古 `completion` 保存 `[FinishLiveResult, PresentData]`，两个结束入口重放同一事务结果；兼容旧版本仅保存 PresentData 的完成记录。普通演出与稽古按最近开始时间分流，并共用玩家行锁。
+
+常设商店复用 `user_raw_union_states` 保存协议对象：149 为商品购买次数，45/129 为铭牌和装饰持有，182 为头像框集合；购买在玩家行锁下与货币/道具更新一起提交，不新增存储表。
+
+稽古开始快照新增第三项卡片战力映射 `[LessonParty, Cards, StatusByCardId]`，卡片 ID 以十进制字符串作为映射键。旧版两项快照在读取未完成场次时补存第三项，不更改次数或奖励。战力采用解包 CharacterMaster、CharacterLevelMaster、CharacterBloomBonusGroupMaster、EffectMaster 与 CharacterStarRankMaster；星章加成为 `min(当前星章加成, 高分满足的最大加成)`，高分缺省为 0 时上限 2.5%。

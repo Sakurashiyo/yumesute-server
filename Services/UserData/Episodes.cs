@@ -1,4 +1,4 @@
-using Npgsql;
+﻿using Npgsql;
 
 sealed partial class UserDataService
 {
@@ -351,7 +351,7 @@ sealed partial class UserDataService
     {
         await using var command = new NpgsqlCommand(
             """
-            select free_jewel, paid_jewel, coin
+            select coin, free_jewel, paid_jewel
             from user_item_currencies
             where "userId" = $1
             """,

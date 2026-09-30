@@ -1,7 +1,8 @@
-static partial class ApiEndpointMappings
+﻿static partial class ApiEndpointMappings
 {
     static void MapCommerceMediaCircleEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
+        MapPermanentMarketEndpoint(app,state,codec,logger);
         app.MapMethods("/localap/api/SerialCodes/UseSerialCode", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);

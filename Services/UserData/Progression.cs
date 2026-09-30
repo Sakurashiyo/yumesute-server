@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Npgsql;
 
 sealed partial class UserDataService
@@ -18,6 +18,8 @@ sealed partial class UserDataService
         if (missionParty.Length == 0 && GetLong(start,0) is > 0)
             context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogWarning(
                 "演出缺少可持久化角色编队 userId={UserId} partyId={PartyId} operation={Operation}",userId,GetLong(start,0),"character-mission-snapshot");
+        await using var transaction = await connection.BeginTransactionAsync();
+        await LockLessonUserAsync(connection, transaction, userId);
         await using var command = new NpgsqlCommand(
             """
             insert into user_live_sessions ("userId", live_master_id, is_auto, use_stamina, character_mission_party)
@@ -25,13 +27,14 @@ sealed partial class UserDataService
             on conflict ("userId") do update set live_master_id = excluded.live_master_id,
               is_auto = excluded.is_auto, use_stamina = excluded.use_stamina,
               completion = null, finish_hash = null, started_at = now(),character_mission_party=excluded.character_mission_party
-            """, connection);
+            """, connection, transaction);
         command.Parameters.AddWithValue(userId);
         command.Parameters.AddWithValue(chartId);
         command.Parameters.AddWithValue(auto);
         command.Parameters.AddWithValue(useStamina);
         command.Parameters.AddWithValue(MsgPack.Encode(missionParty));
         await command.ExecuteNonQueryAsync();
+        await transaction.CommitAsync();
     }
 
     static async Task NormalizeRankAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId)
@@ -81,6 +84,24 @@ sealed partial class UserDataService
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
+        await LockLessonUserAsync(connection, transaction, userId);
+        // 两种演出共用结束接口，按最近一次开始的会话分流，不能命中历史普通演出。
+        await using (var mode = new NpgsqlCommand(
+            """
+            select exists(select 1 from user_lesson_sessions l where l."userId"=$1
+              and not exists(select 1 from user_live_sessions v where v."userId"=l."userId" and v.started_at>=l.started_at))
+            """, connection, transaction))
+        {
+            mode.Parameters.AddWithValue(userId);
+            if ((bool)(await mode.ExecuteScalarAsync())!)
+            {
+                var lesson = await FinishLessonCoreAsync(connection, transaction, userId, new object?[] { finish[0], finish[1], finish[2] });
+                await transaction.CommitAsync();
+                context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
+                    "稽古结算成功 userId={UserId} operation={Operation} score={Score}", userId, "lesson-finish-live", score);
+                return lesson;
+            }
+        }
         long chartId;
         bool auto, useStamina;
         object?[] missionParty;
