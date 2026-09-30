@@ -57,6 +57,11 @@ dotnet run --project SiriusLocalServer.csproj
 
 数据库表的概要见 [`Storage/SCHEMA.md`](Storage/SCHEMA.md)。
 
+## 当前优先级
+- 修复任务无法正常展示
+- 补全circle排行榜api
+- 抽卡系统恢复(混合为一个大的普池)
+- 解决成绩结算问题(由预设改为实际的计算公式(这个有点难…不确定能不能解决))
 
 ## 已知问题
 - 游戏注册/登录后无法进入主页(已知原因:客户端在等待realtime，目前可能暂未实现需要将客户端的这个部分给解决掉)
