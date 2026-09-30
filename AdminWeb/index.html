@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>存档工作台</title><link rel="stylesheet" href="/admin/save-editor/style.css"><script defer src="/admin/save-editor/images.js"></script><script defer src="/admin/save-editor/app.js"></script></head>
+<body><aside><div class="brand">✦ SIRIUS <small>LOCAL SERVER</small></div><h2>玩家存档</h2><input id="search" placeholder="搜索昵称 / 玩家 ID" aria-label="搜索用户"><div id="users"></div></aside>
+<main><header><div><p class="eyebrow">PLAYER SAVE WORKSPACE</p><h1>存档工作台</h1></div><button id="refresh">刷新存档</button></header>
+<div class="notice">仅限本机访问。修改前请退出游戏，保存后重新登录。数量为最终持有数量，不是增加值。</div>
+<p id="message" role="status"></p><section id="empty"><h2>选择一位玩家开始</h2><p>从左侧查找用户，即可管理等级、物品与收藏。</p></section>
+<section id="editor" hidden><div class="identity"><h2 id="name"></h2><p id="identity"></p><div id="summary"></div></div>
+<nav><button data-tab="stats" class="active">等级与货币</button><button data-tab="card">卡片</button><button data-tab="costume">服装</button><button data-tab="item">道具</button></nav>
+<section id="stats"><h2>玩家进度与钱包</h2><form id="stats-form"><div class="fields" id="fields"></div><button class="primary" type="submit">保存等级与货币</button></form></section>
+<section id="inventory" hidden><h2 id="inventory-title"></h2><p>按名称或主数据 ID 查找。新增卡片使用初始等级，并自动补齐角色与默认服装。</p>
+<form id="inventory-form"><input id="master" list="masters" placeholder="选择物品或输入主数据 ID" required aria-label="物品主数据"><datalist id="masters"></datalist><input id="quantity" type="number" min="0" value="1" aria-label="最终数量"><button class="primary" id="grant" type="submit">添加持有</button></form>
+<div id="selection-preview"></div>
+<details id="catalog-panel" open><summary>游戏图鉴 · 点击图片选择</summary><input id="catalog-search" placeholder="搜索图鉴名称或 ID" aria-label="搜索图鉴"><div id="catalog-grid" class="image-grid"></div><div class="pager"><button id="catalog-prev" type="button">上一页</button><span id="catalog-page"></span><button id="catalog-next" type="button">下一页</button></div></details>
+<h3>已持有物品</h3><input id="owned-search" placeholder="筛选已持有物品" aria-label="筛选已持有物品"><div id="owned" class="image-grid"></div></section>
+</section><footer>本地存档管理 · 操作会直接写入数据库；正在使用的卡片与服装受移除保护。</footer></main></body></html>

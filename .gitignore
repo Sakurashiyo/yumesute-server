@@ -1,0 +1,37 @@
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+server-*.log
+*.cmd
+*.json
+*.jsonl
+
+# Build output
+bin/
+obj/
+build-check-current/
+
+# Local IDE/editor state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# 资源文件
+local-masterdata/
+masterdata-export/
+
+# Keep only public project Markdown documents.
+*.md
+*.MD
+!README.md
+!README.MD
+!**/README.md
+!**/README.MD
+!SCHEMA.md
+!SCHEMA.MD
+!**/SCHEMA.md
+!**/SCHEMA.MD

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update=".env">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <EmbeddedResource Include="masterdata-export/tables/PlayerRankMaster.json" LogicalName="Progression.PlayerRankMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/LiveMaster.json" LogicalName="Progression.LiveMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/AnotherNotationMaster.json" LogicalName="Progression.AnotherNotationMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterExperienceItemMaster.json" LogicalName="Progression.CharacterExperienceItemMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterLevelMaster.json" LogicalName="Progression.CharacterLevelMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterMissionStageMaster.json" LogicalName="CharacterMission.CharacterMissionStageMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterMissionCategoryLevelMaster.json" LogicalName="CharacterMission.CharacterMissionCategoryLevelMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterKeyMissionMaster.json" LogicalName="CharacterMission.CharacterKeyMissionMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterStarRankMaster.json" LogicalName="CharacterMission.CharacterStarRankMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterSenseEnhanceItemGroupMaster.json" LogicalName="Progression.CharacterSenseEnhanceItemGroupMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterMaster.json" LogicalName="AdminMaster.CharacterMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterBaseMaster.json" LogicalName="AdminMaster.CharacterBaseMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CostumeMaster.json" LogicalName="AdminMaster.CostumeMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CostumeGroupMaster.json" LogicalName="AdminMaster.CostumeGroupMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CostumeWearableCharacterGroupMaster.json" LogicalName="AdminMaster.CostumeWearableCharacterGroupMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/ItemMaster.json" LogicalName="AdminMaster.ItemMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/MissionMaster.json" LogicalName="Mission.MissionMaster.json" />
+    <EmbeddedResource Include="AdminWeb/*" LogicalName="AdminWeb.%(Filename)%(Extension)" />
+    <Content Include="../admin-icons/**/*.png" Link="AdminIcons/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
