@@ -68,7 +68,7 @@ dotnet run --project SiriusLocalServer.csproj
 
 ### 许可证
 
-本项目的原创源代码按照仓库中 [LICENSE](./LICENSE) 文件所述的许可证进行授权。
+本项目采用 PolyForm Noncommercial License 1.0.0，仅允许非商业用途。详细许可条款请参阅 [LICENSE](./LICENSE)。
 
 该许可证仅适用于本项目作者及贡献者原创的代码，不适用于任何第三方游戏资源、商标、角色、音乐、图片、文本、剧情、模型、音频及其他受版权保护的内容。
 
