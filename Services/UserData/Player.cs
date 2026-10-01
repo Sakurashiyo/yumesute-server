@@ -109,30 +109,21 @@ sealed partial class UserDataService
 
     public async Task<object?[]> UpdateBirthDateAsync(HttpContext context, object? payload)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await RequireAuthenticatedUserAsync(context);
         var birthDate = ExtractFirstDateTime(payload);
-        if (userId is null || birthDate is null) return Array.Empty<object?>();
-
-        await EnsureDefaultUserDataAsync(userId.Value);
+        if (birthDate is null || birthDate.Value.Date > DateTime.UtcNow.Date)
+            throw new BadHttpRequestException(AccountErrors.InvalidBirthDate, 400);
+        await EnsureDefaultUserDataAsync(userId);
         var date = DateTime.SpecifyKind(birthDate.Value.Date, DateTimeKind.Utc);
         var seconds = new DateTimeOffset(date).ToUnixTimeSeconds();
-
         await using var connection = await database.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand(
-            """
-            update user_profiles
-            set birthday = $2,
-                updated_at = now()
-            where "userId" = $1
-            """,
-            connection);
-        command.Parameters.AddWithValue(userId.Value);
-        command.Parameters.AddWithValue((double)seconds);
-        await command.ExecuteNonQueryAsync();
-
-        var preference = await ReadUserPreferenceAsync(connection, userId.Value);
-        var selectedPartyId = preference.ElementAtOrDefault(1) ?? UserScopedId(userId.Value, 4001);
-        return new object?[] { DataObject(2, new object?[] { userId.Value, selectedPartyId, date }) };
+        await using var transaction = await connection.BeginTransactionAsync();
+        await LockLessonUserAsync(connection, transaction, userId);
+        await ExecuteAsync(connection, transaction,
+            "update user_profiles set birthday=$2,updated_at=now() where \"userId\"=$1", userId, (double)seconds);
+        var preference = await ReadUserPreferenceAsync(connection, userId);
+        await transaction.CommitAsync();
+        return new object?[] { DataObject(2, preference) };
     }
 
     public async Task<object?[]> UpdateNotificationReadTimeAsync(HttpContext context, object? payload = null)

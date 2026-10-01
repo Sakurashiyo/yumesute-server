@@ -122,27 +122,25 @@ static partial class ApiEndpointMappings
         app.MapMethods("/localap/api/Account/UpdateBirthDate", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
-            await logger.LogAsync($"account-update-birth-date payload={ValueFormatter.Format(body)}");
             var presentData = await state.UserDataService.UpdateBirthDateAsync(context, body);
             await codec.WriteApiFramesAsync(
                 context,
                 new object?[] { true },
                 presentData,
                 Array.Empty<object?>(),
-                Array.Empty<object?>());
+                Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapMethods("/localap/api/Account/UpdateBirthDateAsync", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
-            await logger.LogAsync($"account-update-birth-date-async payload={ValueFormatter.Format(body)}");
             var presentData = await state.UserDataService.UpdateBirthDateAsync(context, body);
             await codec.WriteApiFramesAsync(
                 context,
                 new object?[] { true },
                 presentData,
                 Array.Empty<object?>(),
-                Array.Empty<object?>());
+                Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapPost("/localap/api/Login/Login", async context =>

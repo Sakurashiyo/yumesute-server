@@ -12,6 +12,10 @@
     <None Update=".env">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <EmbeddedResource Include="masterdata-export/tables/StoryMaster.json" LogicalName="Episode.StoryMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/StoryEventEpisodeMaster.json" LogicalName="Episode.StoryEventEpisodeMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/SpotConversationMaster.json" LogicalName="Episode.SpotConversationMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/SpecialEpisodeMaster.json" LogicalName="Episode.SpecialEpisodeMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/EpisodeMaster.json" LogicalName="Episode.EpisodeMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterEpisodeMaster.json" LogicalName="Episode.CharacterEpisodeMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/EpisodeRewardPackageMaster.json" LogicalName="Episode.EpisodeRewardPackageMaster.json" />

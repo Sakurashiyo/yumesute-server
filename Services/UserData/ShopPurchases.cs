@@ -77,7 +77,16 @@ sealed partial class UserDataService
         var previous = (await ReadShopPurchaseStatesAsync(connection, userId, transaction, now))
             .SingleOrDefault(row => Convert.ToInt64(row[1]) == productId);
         if (previous is not null && Convert.ToInt32(previous[2]) >= DailyFreePackRules.PurchaseLimit)
-            throw new BadHttpRequestException(PermanentMarketErrors.LimitReached, 409);
+        {
+            // 重试同步已领取状态，不再次发奖，也不让过期的客户端按钮触发返回标题的错误。
+            var synchronized = new object?[]
+            {
+                DataObject(108, previous), DataObject(0, await ReadUserAsync(connection, userId)),
+                DataObject(128, await ReadCurrencyAsync(connection, userId))
+            };
+            await transaction.CommitAsync();
+            return new ShopPurchaseResponse(Array.Empty<object?>(), synchronized);
+        }
         var next = CurrentDailyResetBoundaryUtc(now).AddDays(1).UtcDateTime;
         await using (var purchase = new NpgsqlCommand("""
             insert into user_shop_purchase_states

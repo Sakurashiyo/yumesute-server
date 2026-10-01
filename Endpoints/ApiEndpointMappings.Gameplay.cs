@@ -307,7 +307,7 @@ static partial class ApiEndpointMappings
                 claim.Rewards,
                 claim.Present,
                 Array.Empty<object?>(),
-                Array.Empty<object?>());
+                Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapPost("/localap/api/Missions/{missionId:long}/receiveCurrentRewards", async (HttpContext context, long missionId) =>
@@ -319,7 +319,7 @@ static partial class ApiEndpointMappings
                 claim.Rewards,
                 claim.Present,
                 Array.Empty<object?>(),
-                Array.Empty<object?>());
+                Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapPost("/localap/api/Missions/MissionPassReceiveRewards/{missionPassId:long}", async (HttpContext context, long missionPassId) =>

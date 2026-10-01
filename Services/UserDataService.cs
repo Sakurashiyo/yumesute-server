@@ -67,7 +67,7 @@ sealed partial class UserDataService
         await EnsureDefaultUserDataAsync(userId.Value);
         await using var connection = await database.OpenConnectionAsync();
         var presentData = new List<object?>();
-        presentData.AddRange(BuildLoginMissionRefreshPresentData());
+        presentData.AddRange((await ReadMissionsAsync(connection, userId.Value)).Select(row => DataObject(48, row)));
         presentData.Add(DataObject(0, await ReadUserAsync(connection, userId.Value)));
         presentData.Add(DataObject(109, await ReadDailyLimitAsync(connection, userId.Value)));
         return presentData.ToArray();
@@ -1702,16 +1702,16 @@ sealed partial class UserDataService
 
     static async Task<object?[]> ReadUserPreferenceAsync(NpgsqlConnection connection, long userId)
     {
-        await using var command = new NpgsqlCommand(
-            """
-            select selected_party_id
-            from user_player_preferences
-            where "userId" = $1
-            """,
-            connection);
+        await using var command = new NpgsqlCommand("""
+            select p.selected_party_id, u.birthday
+            from user_player_preferences p join user_profiles u using("userId")
+            where p."userId"=$1
+            """, connection);
         command.Parameters.AddWithValue(userId);
-        var selectedPartyId = await command.ExecuteScalarAsync() as long? ?? UserScopedId(userId, 4001);
-        return new object?[] { userId, selectedPartyId, null };
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) throw new InvalidOperationException("缺少玩家偏好存档");
+        DateTime? birthDate = reader.IsDBNull(1) ? null : DateTimeOffset.FromUnixTimeSeconds(checked((long)reader.GetDouble(1))).UtcDateTime;
+        return new object?[] { userId, reader.IsDBNull(0) ? UserScopedId(userId, 4001) : reader.GetInt64(0), birthDate };
     }
 
     static async Task<List<object?[]>> ReadPartiesAsync(NpgsqlConnection connection, long userId)
@@ -2230,17 +2230,6 @@ sealed partial class UserDataService
     static object?[] DataObject(int unionKey, object?[] value)
     {
         return new object?[] { unionKey, value };
-    }
-
-    static object?[] BuildLoginMissionRefreshPresentData()
-    {
-        return new object?[]
-        {
-            DataObject(48, new object?[] { 126984507L, false, false, 0, null, 100000, 100001 }),
-            DataObject(48, new object?[] { 126984614L, false, false, 0, null, 100200, 100201 }),
-            DataObject(48, new object?[] { 126984536L, false, false, 0, null, 100300, 100301 }),
-            DataObject(48, new object?[] { 126984983L, false, false, 0, null, 100400, 100401 })
-        };
     }
 
     sealed record GachaHistoryRow(

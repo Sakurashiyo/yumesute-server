@@ -11,6 +11,8 @@ sealed class ApiCodec
         this.logger = logger;
     }
 
+    static bool IsBirthDateRequest(HttpContext context) => context.Request.Path.Value?.Contains("UpdateBirthDate", StringComparison.OrdinalIgnoreCase) == true;
+
     public async Task<object?> ReadRequestBodyAsync(HttpContext context)
     {
         var bytes = await ReadRequestBytesAsync(context);
@@ -25,7 +27,7 @@ sealed class ApiCodec
         await context.Request.Body.CopyToAsync(ms);
         var bytes = ms.ToArray();
         await logger.LogAsync($"body length={bytes.Length} path={context.Request.Path}");
-        if (bytes.Length > 0)
+        if (bytes.Length > 0 && !IsBirthDateRequest(context))
         {
             await logger.LogAsync($"body raw path={context.Request.Path} hex={Bytes.ToHex(bytes, 256)}");
         }
@@ -38,12 +40,12 @@ sealed class ApiCodec
         if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
         {
             var json = JsonSerializer.Deserialize<object>(bytes);
-            await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(json)}");
+            if (!IsBirthDateRequest(context)) await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(json)}");
             return json;
         }
 
         var decoded = MagicOnionLz4.Unwrap(MsgPack.Decode(bytes));
-        await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(decoded)}");
+        if (!IsBirthDateRequest(context)) await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(decoded)}");
         return decoded;
     }
 
@@ -139,6 +141,9 @@ sealed class ApiCodec
         };
 
         context.Response.Headers.ContentLength = payload.Length;
+        if (IsBirthDateRequest(context))
+            await logger.LogAsync($"response mode={responseMode} bytes={payload.Length} path={context.Request.Path}");
+        else
         await logger.LogAsync($"response mode={responseMode} bytes={payload.Length} prefix={Bytes.ToHex(payload, 48)} path={context.Request.Path} result={ValueFormatter.Format(result)} present={ValueFormatter.Format(present)}");
         await context.Response.Body.WriteAsync(payload);
     }

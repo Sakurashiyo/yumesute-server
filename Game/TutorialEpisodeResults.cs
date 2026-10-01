@@ -2,13 +2,9 @@
 {
     public static object?[] Summary(long episodeMasterId)
     {
-        return new object?[]
-        {
-            "",
-            1,
-            1,
-            SceneAssetPath(episodeMasterId)
-        };
+        if (!EpisodeProgressionRules.Summaries.TryGetValue(episodeMasterId, out var summary))
+            throw new BadHttpRequestException(EpisodeErrors.NotFound, 404);
+        return new object?[] { summary.Title, summary.StoryType, summary.Order, SceneAssetPath(episodeMasterId) };
     }
 
     public static object?[] Details(long episodeMasterId)

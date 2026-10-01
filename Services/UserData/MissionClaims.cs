@@ -11,8 +11,7 @@ sealed partial class UserDataService
     {
         if (payload is not object?[] { Length: > 0 } values || GetLong(values, 0) != 4101)
             return Array.Empty<object?>();
-        var userId = await GetCurrentUserIdAsync(context)
-            ?? throw new BadHttpRequestException(CharacterProgressionErrors.InvalidRequest);
+        var userId = await RequireAuthenticatedUserAsync(context);
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
         await CompleteShopFreePackMissionsAsync(connection, null, userId);
@@ -53,11 +52,11 @@ sealed partial class UserDataService
     {
         if (missionId is null && category is null)
             throw new BadHttpRequestException(CharacterProgressionErrors.InvalidRequest);
-        var userId = await GetCurrentUserIdAsync(context)
-            ?? throw new BadHttpRequestException(CharacterProgressionErrors.InvalidRequest);
+        var userId = await RequireAuthenticatedUserAsync(context);
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
+        await LockLessonUserAsync(connection, transaction, userId);
         var candidates = new List<(long Id, long From, long To, int Progress, DateTime? CompletedAt)>();
         await using (var command = new NpgsqlCommand(
             """
@@ -76,7 +75,7 @@ sealed partial class UserDataService
 
         var selected = candidates.Where(row =>
                 MissionClaimDefinitions.Value.TryGetValue(row.From, out var definition)
-                && (missionId == row.From || category == definition.Category))
+                && (missionId == row.From || missionId == row.Id || category == definition.Category))
             .ToArray();
         var rewards = new List<object?>();
         var present = new List<object?>();
@@ -115,16 +114,8 @@ sealed partial class UserDataService
             await ExecuteAsync(connection, transaction,
                 "update user_mission_statuses set is_received = true, updated_at = now() where id = $1 and \"userId\" = $2",
                 status.Id, userId);
-            present.Add(DataObject(48, new object?[]
-            {
-                status.Id, true, true, status.Progress, status.CompletedAt, status.From, status.To
-            }));
         }
 
-        await transaction.CommitAsync();
-        context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
-            "Mission rewards claimed userId={UserId} missionId={MissionId} category={Category} claimedCount={ClaimedCount} rewardCount={RewardCount}",
-            userId, missionId, category, selected.Length, rewards.Count);
         if (currencyChanged)
         {
             present.Add(DataObject(0, await ReadUserAsync(connection, userId)));
@@ -135,6 +126,15 @@ sealed partial class UserDataService
             foreach (var item in await ReadItemPossessionsAsync(connection, userId))
                 if (updatedItems.Contains(Convert.ToInt64(item[1]))) present.Add(DataObject(27, item));
         }
+        // 重试没有新奖励时也返回权威状态，修复客户端漏收上一次领取响应后的角标。
+        present.InsertRange(0, (await ReadMissionsAsync(connection, userId)).Where(row =>
+            MissionClaimDefinitions.Value.TryGetValue(Convert.ToInt64(row[5]), out var definition)
+            && (missionId == Convert.ToInt64(row[5]) || missionId == Convert.ToInt64(row[0]) || category == definition.Category))
+            .Select(row => DataObject(48, row)));
+        await transaction.CommitAsync();
+        context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
+            "任务奖励领取完成 operation={Operation} userId={UserId} missionId={MissionId} category={Category} claimedCount={ClaimedCount}",
+            "mission-claim", userId, missionId, category, selected.Length);
         return new MissionClaimResponse(rewards.ToArray(), present.ToArray());
     }
 
