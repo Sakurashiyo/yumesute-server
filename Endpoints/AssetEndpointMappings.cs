@@ -57,7 +57,15 @@ static class AssetEndpointMappings
                 return;
             }
 
-            await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(path ?? ""), codec);
+            var file = assets.ResolveAssetFile(path ?? "");
+            var normalized = Uri.UnescapeDataString(path ?? "").Replace('\\', '/').TrimStart('/');
+            if (file is null && normalized.StartsWith("Resources/Textures/Banners/", StringComparison.OrdinalIgnoreCase)
+                && normalized.EndsWith(".astc.gz", StringComparison.OrdinalIgnoreCase))
+            {
+                await SendTransparentAstcAsync(context, codec, state.Logger);
+                return;
+            }
+            await assets.SendLocalFileAsync(context, file, codec);
         });
 
         app.MapMethods("/com.unity.addressables/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
@@ -132,10 +140,27 @@ static class AssetEndpointMappings
             normalized.StartsWith("Resources/Textures/Banners", StringComparison.OrdinalIgnoreCase);
     }
 
+    static async Task SendTransparentAstcAsync(HttpContext context, ApiCodec codec, LocalRequestLogger logger)
+    {
+        // 客户端图片下载失败时不会释放并发名额；缺失横幅须使用格式正确的透明占位。
+        // 真实横幅在路由中优先返回，此占位只用于尚未下载的静态横幅。
+        var astc = Convert.FromHexString("13ABA15C060601060000060000010000FCFDFFFFFFFFFFFF0000000000000000");
+        using var output = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+            await gzip.WriteAsync(astc);
+        var bytes = output.ToArray();
+        codec.SetCommonHeaders(context);
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        context.Response.ContentType = "application/octet-stream";
+        context.Response.ContentLength = bytes.Length;
+        await logger.LogAsync($"WARN static banner missing: transparent-astc placeholder bytes={bytes.Length} path={context.Request.Path}");
+        if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.Body.WriteAsync(bytes);
+    }
+
     static async Task SendTransparentPngAsync(HttpContext context, ApiCodec codec, LocalRequestLogger logger)
     {
         codec.SetCommonHeaders(context);
-        var bytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l3n1nwAAAABJRU5ErkJggg==");
+        var bytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==");
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = "image/png";
         context.Response.Headers.ContentLength = bytes.Length;

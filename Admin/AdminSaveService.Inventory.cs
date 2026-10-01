@@ -20,34 +20,7 @@ sealed partial class AdminSaveService
             await ExecuteAsync(connection, transaction, "delete from user_character_cards where \"userId\" = $1 and character_master_id = $2", userId, card.Id);
             return;
         }
-        var character = catalog.Bases[card.BaseId];
-        if (!catalog.Costumes.ContainsKey(character.DefaultCostume)) throw new InvalidOperationException("默认服装主数据缺失");
-        await ExecuteAsync(connection, transaction,
-            """
-            insert into user_character_bases (id, "userId", character_base_master_id, costume_master_id)
-            values ($1,$2,$3,$4) on conflict ("userId", character_base_master_id) do nothing
-            """, NewId(), userId, card.BaseId, character.DefaultCostume);
-        await using var findBase = Command(connection, transaction, "select id from user_character_bases where \"userId\" = $1 and character_base_master_id = $2", userId, card.BaseId);
-        var baseId = (long)(await findBase.ExecuteScalarAsync() ?? throw new InvalidOperationException("创建角色基础状态失败"));
-        await ExecuteAsync(connection, transaction,
-            """
-            insert into user_character_cards (id,"userId",character_master_id,character_base_id,rarity,skill_level)
-            values ($1,$2,$3,$4,$5,1) on conflict ("userId",character_master_id) do nothing
-            """, NewId(), userId, card.Id, baseId, card.Rarity);
-        await ExecuteAsync(connection, transaction,
-            """
-            update user_character_bases set selected_character_id = (
-              select id from user_character_cards where "userId" = $1 and character_master_id = $2)
-            where id = $3 and selected_character_id is null
-            """, userId, card.Id, baseId);
-        await GrantCostumeAsync(connection, transaction, userId, character.DefaultCostume);
-        // 与现有新用户初始化约定一致，补齐该角色的基础育成状态。
-        foreach (var resource in new[] { (Type: 3, Master: 10201L), (Type: 2, Master: 10101L) })
-            await ExecuteAsync(connection, transaction,
-                """
-                insert into user_character_resource_progress (id,"userId",character_base_master_id,resource_type,resource_master_id)
-                values ($1,$2,$3,$4,$5) on conflict ("userId",character_base_master_id,resource_type) do nothing
-                """, NewId(), userId, card.BaseId, resource.Type, resource.Master);
+        await CardInventoryWriter.GrantAsync(connection, transaction, userId, catalog, card);
     }
 
     async Task SaveCostumeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId, AdminSaveCommand request)

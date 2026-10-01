@@ -128,7 +128,7 @@ static class MagicOnionLz4
         };
     }
 
-    static byte[] CompressLiteralBlock(byte[] raw)
+    internal static byte[] CompressLiteralBlock(byte[] raw)
     {
         using var ms = new MemoryStream();
         var length = raw.Length;

@@ -1,8 +1,12 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Npgsql;
 
 sealed partial class UserDataService
 {
+    // 保留旧存档的内部编号，客户端 Poster 的 IDataObject union 编号为 11。
+    const int LegacyPosterStorageKey = 28;
+    const int PosterDataObjectUnionKey = 11;
+
     public sealed record PermanentMarketExchangeResult(object?[] Rewards, object?[] Present);
 
     public async Task<PermanentMarketExchangeResult> ExchangePermanentMarketThingAsync(HttpContext context, long productId, int quantity)
@@ -125,7 +129,9 @@ sealed partial class UserDataService
         while(await reader.ReadAsync())
         {
             using var json = JsonDocument.Parse(reader.GetString(1));
-            data.Add(DataObject(reader.GetInt32(0),(object?[])Read(json.RootElement)));
+            var storageKey = reader.GetInt32(0);
+            var protocolKey = storageKey == LegacyPosterStorageKey ? PosterDataObjectUnionKey : storageKey;
+            data.Add(DataObject(protocolKey,(object?[])Read(json.RootElement)));
         }
         return data.ToArray();
     }

@@ -2242,13 +2242,6 @@ sealed partial class UserDataService
         return new object?[] { unionKey, value };
     }
 
-    sealed record GachaHistoryRow(
-        long GachaDetailMasterId,
-        int ThingType,
-        long ThingMasterId,
-        int Quantity,
-        object?[] Payload);
-
     public sealed record LoginBonusReceiveResult(object?[] Bonuses, object?[] PresentData);
 
     public sealed record InboxCheckPackagesResult(bool IsSuccess, object?[] PresentData);

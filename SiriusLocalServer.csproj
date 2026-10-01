@@ -45,5 +45,6 @@
     <EmbeddedResource Include="masterdata-export/tables/MissionMaster.json" LogicalName="Mission.MissionMaster.json" />
     <EmbeddedResource Include="AdminWeb/*" LogicalName="AdminWeb.%(Filename)%(Extension)" />
     <Content Include="../admin-icons/**/*.png" Link="AdminIcons/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="masterdata-export/tables/GachaMaster.json" LogicalName="Gacha.GachaMaster.json" />
   </ItemGroup>
 </Project>

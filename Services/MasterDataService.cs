@@ -27,15 +27,15 @@ sealed class MasterDataService
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {
-            return MasterDataVersionInfo.FromConfig(config);
+            return GachaMasterDataOverlay.Apply(MasterDataVersionInfo.FromConfig(config));
         }
 
-        return new MasterDataVersionInfo(
+        return GachaMasterDataOverlay.Apply(new MasterDataVersionInfo(
             reader.GetString(0),
             reader.GetInt64(1),
             reader.GetString(2),
             reader.GetString(3),
-            reader.GetString(4));
+            reader.GetString(4)));
     }
 }
 

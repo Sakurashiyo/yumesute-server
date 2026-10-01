@@ -186,59 +186,6 @@ static partial class ApiEndpointMappings
                     : "shops-exchange-music-five-frame");
         });
 
-        app.MapMethods("/localap/api/Shops/ExchangeShopThing/{exchangeShopThingId:long}/{quantity:int}", new[] { "GET", "POST" }, async (HttpContext context, long exchangeShopThingId, int quantity) =>
-        {
-            await logger.LogAsync($"shops-exchange-shop-thing exchangeShopThingId={exchangeShopThingId} quantity={quantity} query={context.Request.QueryString}");
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.ExchangeShopThingResult(exchangeShopThingId, quantity),
-                GameResults.ExchangeShopThingPresentData(exchangeShopThingId, quantity),
-                Array.Empty<object?>(),
-                Array.Empty<object?>(),
-                "shops-exchange-shop-thing-five-frame");
-        });
-
-        app.MapGet("/localap/api/Gachas", async context =>
-        {
-            await logger.LogAsync("gachas-list");
-            await codec.WriteApiResultAsync(context, GameResults.GachaListResult());
-        });
-
-        app.MapGet("/localap/api/Gachas/CharacterLineup/{gachaMasterId:long}", async (HttpContext context, long gachaMasterId) =>
-        {
-            await logger.LogAsync($"gachas-character-lineup gachaMasterId={gachaMasterId} query={context.Request.QueryString}");
-            await codec.WriteApiResultAsync(context, GameResults.CharacterLineupResult(gachaMasterId));
-        });
-
-        app.MapMethods("/localap/api/Gachas/GetGachaHistories", new[] { "GET", "POST" }, async context =>
-        {
-            await logger.LogAsync($"gachas-get-histories cardType={context.Request.Query["cardType"].FirstOrDefault()}");
-            await codec.WriteApiResultAsync(context, await state.UserDataService.GetGachaHistoriesAsync(context));
-        });
-
-        app.MapPost("/localap/api/Gachas/Roll/{gachaDetailMasterId:long}", async (HttpContext context, long gachaDetailMasterId) =>
-        {
-            await logger.LogAsync($"gachas-roll gachaDetailMasterId={gachaDetailMasterId} query={context.Request.QueryString}");
-            var result = GameResults.GachaRollResult(gachaDetailMasterId);
-            await state.UserDataService.SaveGachaHistoryAsync(context, gachaDetailMasterId, result);
-            await codec.WriteApiResultAsync(context, result);
-        });
-
-        app.MapPost("/localap/api/Gachas/ReRoll", async context =>
-        {
-            var gachaDetailMasterId = ReadLongQuery(context, "gachaDetailMasterId");
-            await logger.LogAsync($"gachas-reroll gachaDetailMasterId={gachaDetailMasterId} query={context.Request.QueryString}");
-            var effectiveGachaDetailMasterId = gachaDetailMasterId ?? 193300;
-            var result = GameResults.ReRollGachaResult(effectiveGachaDetailMasterId);
-            await state.UserDataService.SaveGachaHistoryAsync(context, effectiveGachaDetailMasterId, result);
-            await codec.WriteApiResultAsync(context, result);
-        });
-
-        app.MapPost("/localap/api/Gachas/DecideReRollGacha", async context =>
-        {
-            await logger.LogAsync($"gachas-decide-reroll query={context.Request.QueryString}");
-            await codec.WriteApiResultAsync(context, new object?[] { true });
-        });
-
+        MapGachaEndpoints(app,state,codec,logger);
     }
 }

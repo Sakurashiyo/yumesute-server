@@ -42,19 +42,19 @@ sealed partial class UserDataService
                     break;
                 case 3:
                     // 主线海报同名重复获得时提升突破阶段，保留原有等级和实例 ID。
-                    var poster = stored.Where(row => Convert.ToInt32(row[0]) == 28)
+                    var poster = stored.Where(row => Convert.ToInt32(row[0]) == PosterDataObjectUnionKey)
                         .Select(row => (object?[])row[1]!).SingleOrDefault(row => Convert.ToInt64(row[1]) == reward.MasterId);
                     poster = poster is null
                         ? new object?[] { UserScopedId(userId, 280000 + reward.MasterId), reward.MasterId, 1, reward.Quantity - 1, 0, 0, false, 0 }
                         : (object?[])poster.Clone();
-                    if (stored.Any(row => Convert.ToInt32(row[0]) == 28 && Convert.ToInt64(((object?[])row[1]!)[1]) == reward.MasterId))
+                    if (stored.Any(row => Convert.ToInt32(row[0]) == PosterDataObjectUnionKey && Convert.ToInt64(((object?[])row[1]!)[1]) == reward.MasterId))
                         poster[3] = checked(Convert.ToInt32(poster[3]) + reward.Quantity);
                     if (!EpisodeProgressionRules.PosterMaxPhases.TryGetValue(reward.MasterId, out var maximum)
                         || Convert.ToInt32(poster[3]) > maximum)
                         throw new InvalidOperationException($"剧情海报超过突破上限，不能丢弃奖励：{reward.MasterId}");
                     afterPhase = Convert.ToInt32(poster[3]);
-                    await SavePermanentMarketDataAsync(connection, transaction, userId, 28, reward.MasterId.ToString(), poster);
-                    present.Add(DataObject(28, poster));
+                    await SavePermanentMarketDataAsync(connection, transaction, userId, LegacyPosterStorageKey, reward.MasterId.ToString(), poster);
+                    present.Add(DataObject(PosterDataObjectUnionKey, poster));
                     break;
                 case 8:
                     if (reward.Quantity != 1) throw new InvalidOperationException("剧情铭牌奖励数量发生变化");

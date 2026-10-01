@@ -1,9 +1,9 @@
 sealed partial class UserDataService
 {
-    // 沿用已验证的常规签到角色、语音与动作配置，交由客户端选择展示角色。
+    // 按主页角色选择明确的立绘配置；SelectedSpineCostume 会把 3D 服装编号当成剧情立绘地址。
     static object?[] BuildRegularLoginBonusSpineGroup() => new object?[]
     {
-        3,
+        2,
         new object?[]
         {
             new object?[] { 101, null, null, "10101", "101512", 1, 200, null, 2, 2 },

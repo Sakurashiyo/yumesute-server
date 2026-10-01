@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using System.Text;
 
 static class MsgPack
@@ -12,6 +12,12 @@ static class MsgPack
         using var ms = new MemoryStream();
         Write(ms, value);
         return ms.ToArray();
+    }
+
+    public static object? DecodePrefix(byte[] bytes, out int consumed)
+    {
+        consumed = 0;
+        return Read(bytes, ref consumed);
     }
 
     public static object? Decode(byte[] bytes)
