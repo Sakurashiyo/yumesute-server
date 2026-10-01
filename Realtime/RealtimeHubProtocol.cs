@@ -1,5 +1,6 @@
 using Grpc.Core;
 using System.Text;
+using System.Buffers.Binary;
 
 static class RealtimeHubProtocol
 {
@@ -37,6 +38,83 @@ static class RealtimeHubProtocol
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, InvalidFrame));
         }
+    }
+
+    public static object? ReadArguments(byte[] payload)
+    {
+        try
+        {
+            ValidateValue(payload);
+            var frame = (object?[])MsgPack.Decode(payload)!;
+            return MagicOnionLz4.Unwrap(frame[^1], 256 * 1024, bytes =>
+            {
+                ValidateValue(bytes);
+                return MsgPack.Decode(bytes);
+            });
+        }
+        catch (Exception error) when (error is InvalidDataException or FormatException or InvalidOperationException
+            or IndexOutOfRangeException or EndOfStreamException or OverflowException or ArgumentException)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, InvalidFrame));
+        }
+    }
+
+    // 在分配和解码前验证完整长度与嵌套深度，拒绝截断、尾随数据和压缩后的深层对象。
+    static void ValidateValue(byte[] bytes)
+    {
+        var offset = 0;
+        uint Length(int size)
+        {
+            if (offset + size > bytes.Length) throw new InvalidDataException("长度字段不完整");
+            var value = size switch
+            {
+                1 => bytes[offset],
+                2 => BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(offset)),
+                4 => BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(offset)),
+                _ => throw new InvalidOperationException()
+            };
+            offset += size;
+            return value;
+        }
+        void Value(int depth)
+        {
+            if (depth > 32 || offset >= bytes.Length) throw new InvalidDataException("对象深度或长度非法");
+            var marker = bytes[offset++];
+            long skip = 0, children = 0;
+            if (marker <= 0x7f || marker >= 0xe0 || marker is 0xc0 or 0xc2 or 0xc3) return;
+            if (marker is >= 0x90 and <= 0x9f) children = marker & 15;
+            else if (marker is >= 0x80 and <= 0x8f) children = (marker & 15) * 2;
+            else if (marker is >= 0xa0 and <= 0xbf) skip = marker & 31;
+            else switch (marker)
+                {
+                    case 0xcc: case 0xd0: skip = 1; break;
+                    case 0xcd: case 0xd1: skip = 2; break;
+                    case 0xce: case 0xd2: case 0xca: skip = 4; break;
+                    case 0xcf: case 0xd3: case 0xcb: skip = 8; break;
+                    case 0xd9: case 0xc4: skip = Length(1); break;
+                    case 0xda: case 0xc5: skip = Length(2); break;
+                    case 0xdb: case 0xc6: skip = Length(4); break;
+                    case 0xd4: skip = 2; break;
+                    case 0xd5: skip = 3; break;
+                    case 0xd6: skip = 5; break;
+                    case 0xd7: skip = 9; break;
+                    case 0xd8: skip = 17; break;
+                    case 0xc7: skip = Length(1) + 1L; break;
+                    case 0xc8: skip = Length(2) + 1L; break;
+                    case 0xc9: skip = Length(4) + 1L; break;
+                    case 0xdc: children = Length(2); break;
+                    case 0xdd: children = Length(4); break;
+                    case 0xde: children = Length(2) * 2L; break;
+                    case 0xdf: children = Length(4) * 2L; break;
+                    default: throw new InvalidDataException("标记非法");
+                }
+            if (skip > bytes.Length - offset || children > bytes.Length - offset)
+                throw new InvalidDataException("对象数据不完整");
+            offset += (int)skip;
+            for (long i = 0; i < children; i++) Value(depth + 1);
+        }
+        Value(0);
+        if (offset != bytes.Length) throw new InvalidDataException("存在尾随数据");
     }
 
     static int ReadNumber(byte[] payload, ref int offset)

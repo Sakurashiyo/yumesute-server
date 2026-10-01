@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using Npgsql;
 
@@ -690,6 +690,7 @@ sealed partial class UserDataService
         result.Add(DataObject(189, homeSkin));
         result.AddRange(inboxPackages.Select(value => DataObject(41, value)));
         result.AddRange(await ReadPermanentMarketDataAsync(connection,userId));
+        result.AddRange((await ReadShopPurchaseStatesAsync(connection, userId)).Select(row => DataObject(108, row)));
         AddOfficialBootstrapData(result, userId);
         return BuildOfficialUserDataBatches(result, userId);
     }

@@ -1,16 +1,22 @@
 using Grpc.Core;
 using Npgsql;
 
-sealed class RealtimeHubService(LocalServerState state)
+sealed partial class RealtimeHubService(LocalServerState state)
 {
     public async Task ConnectAsync(string hub, IAsyncStreamReader<byte[]> requests, IServerStreamWriter<byte[]> responses, ServerCallContext call)
     {
-        var userId = await AuthenticateAsync(call);
+        var authenticated = await AuthenticateAsync(call);
+        var userId = authenticated.UserId;
         var logger = call.GetHttpContext().RequestServices.GetRequiredService<ILogger<RealtimeHubService>>();
         logger.LogInformation("实时连接建立 hub={Hub} userId={UserId} connectionId={ConnectionId}", hub, userId, call.GetHttpContext().TraceIdentifier);
         await call.WriteResponseHeadersAsync(new Metadata { { "x-magiconion-streaminghub-version", "2" } });
         // MagicOnion 客户端等待首帧才完成 ConnectAsync；-1 请求编号是协议就绪标记。
         await responses.WriteAsync(RealtimeHubProtocol.Response(-1, 0, null));
+        if (hub == "IMultiLiveHub")
+        {
+            await RunMultiLiveStreamAsync(authenticated.Identity, requests, responses, call, logger);
+            return;
+        }
         var joined = false;
         try
         {
@@ -60,7 +66,7 @@ sealed class RealtimeHubService(LocalServerState state)
         }
     }
 
-    async Task<long> AuthenticateAsync(ServerCallContext call)
+    async Task<(long UserId, string Identity)> AuthenticateAsync(ServerCallContext call)
     {
         var headers = call.GetHttpContext().Request.Headers;
         var token = headers.Authorization.ToString();
@@ -75,9 +81,14 @@ sealed class RealtimeHubService(LocalServerState state)
         }
         if (string.IsNullOrEmpty(token)) throw new RpcException(new Status(StatusCode.Unauthenticated, RealtimeHubProtocol.AuthRequired));
         await using var connection = await state.Database.OpenConnectionAsync(call.CancellationToken);
-        await using var command = new NpgsqlCommand("select \"userId\" from user_auth_sessions where token_hash = $1 and expires_at > now() order by id desc limit 1", connection);
+        await using var command = new NpgsqlCommand("""
+            select s."userId", a.public_id from user_auth_sessions s join user_accounts a on a.id=s."userId"
+            where s.token_hash=$1 and s.expires_at>now() order by s.id desc limit 1
+            """, connection);
         command.Parameters.AddWithValue(CryptoService.Sha256(token));
-        var userId = await command.ExecuteScalarAsync(call.CancellationToken);
-        return userId is long id ? id : throw new RpcException(new Status(StatusCode.Unauthenticated, RealtimeHubProtocol.AuthInvalid));
+        await using var reader = await command.ExecuteReaderAsync(call.CancellationToken);
+        if (!await reader.ReadAsync(call.CancellationToken)) throw new RpcException(new Status(StatusCode.Unauthenticated, RealtimeHubProtocol.AuthInvalid));
+        // 与 HTTP 用户数据中的 public_id 一致，身份不能由客户端的加入参数指定。
+        return (reader.GetInt64(0), reader.GetString(1));
     }
 }

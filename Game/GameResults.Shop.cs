@@ -1,56 +1,5 @@
 static partial class GameResults
 {
-    public static object?[] ShopPurchaseResult()
-    {
-        return new object?[]
-        {
-            new object?[] { 15, 0, 60, null, null, null, false },
-            new object?[] { 12, 0, 10000, null, null, null, false }
-        };
-    }
-
-    public static object?[] ShopPurchasePresentData(object? payload)
-    {
-        var values = payload as object?[];
-        var shopItemId = ConvertToLong(values?.ElementAtOrDefault(0) ?? payload) ?? 4101;
-        var now = DateTime.UtcNow;
-        var chinaNow = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8));
-        var shopResetAt = new DateTimeOffset(chinaNow.Year, chinaNow.Month, chinaNow.Day, 13, 0, 0, TimeSpan.FromHours(8)).UtcDateTime;
-
-        return new object?[]
-        {
-            DataObject(0, new object?[]
-            {
-                5444921718L,
-                12,
-                99,
-                1689,
-                now,
-                0,
-                0,
-                0,
-                50,
-                0,
-                DateTime.UnixEpoch,
-                null,
-                new DateTime(2026, 7, 21, 23, 32, 2, DateTimeKind.Utc),
-                "5444921718",
-                0,
-                99,
-                0,
-                new DateTime(2026, 7, 22, 1, 36, 26, DateTimeKind.Utc),
-                false,
-                false
-            }),
-            DataObject(128, new object?[] { 5541180L, 235314, 5990, 0 }),
-            DataObject(108, new object?[] { Random.Shared.Next(3800000, 3899999), shopItemId, 1, 1, shopResetAt }),
-            DataObject(48, new object?[] { Random.Shared.Next(126000000, 126999999), true, false, 1, null, 100400, 100401 }),
-            DataObject(48, new object?[] { Random.Shared.Next(126000000, 126999999), false, false, 1, null, 200600, 200601 }),
-            DataObject(48, new object?[] { Random.Shared.Next(126000000, 126999999), true, false, 3, null, 100300, 100301 }),
-            DataObject(48, new object?[] { Random.Shared.Next(126000000, 126999999), false, false, 235314, null, 2800, 2801 })
-        };
-    }
-
     public static object?[] ShopPurchaseNotifications()
     {
         return new object?[]

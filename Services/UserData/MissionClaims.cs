@@ -15,6 +15,18 @@ sealed partial class UserDataService
             ?? throw new BadHttpRequestException(CharacterProgressionErrors.InvalidRequest);
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
+        await CompleteShopFreePackMissionsAsync(connection, null, userId);
+        var present = (await ReadMissionsAsync(connection, userId))
+            .Where(row => Convert.ToInt64(row[5]) is 100300 or 100400)
+            .Select(row => (object?)DataObject(48, row))
+            .ToList();
+        present.Add(DataObject(0, await ReadUserAsync(connection, userId)));
+        present.Add(DataObject(128, await ReadCurrencyAsync(connection, userId)));
+        return present.ToArray();
+    }
+
+    static async Task CompleteShopFreePackMissionsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, long userId)
+    {
         await using var command = new NpgsqlCommand(
             """
             insert into user_mission_statuses
@@ -24,7 +36,7 @@ sealed partial class UserDataService
             do update set is_cleared = true, progress = excluded.progress,
                           completed_at = coalesce(user_mission_statuses.completed_at, now()),
                           updated_at = now()
-            """, connection);
+            """, connection, transaction);
         foreach (var (from, to, progress) in new[] { (100400L, 100401L, 1), (100300L, 100301L, 3) })
         {
             command.Parameters.Clear();
@@ -35,13 +47,6 @@ sealed partial class UserDataService
             command.Parameters.AddWithValue(to);
             await command.ExecuteNonQueryAsync();
         }
-        var present = (await ReadMissionsAsync(connection, userId))
-            .Where(row => Convert.ToInt64(row[5]) is 100300 or 100400)
-            .Select(row => (object?)DataObject(48, row))
-            .ToList();
-        present.Add(DataObject(0, await ReadUserAsync(connection, userId)));
-        present.Add(DataObject(128, await ReadCurrencyAsync(connection, userId)));
-        return present.ToArray();
     }
 
     public async Task<MissionClaimResponse> ReceiveMissionRewardsAsync(HttpContext context, long? missionId, int? category)

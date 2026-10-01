@@ -1,12 +1,14 @@
 using System.Collections.Concurrent;
 using SiriusLocalServer.Realtime;
 
-sealed class MultiLiveRealtimeService
+sealed partial class MultiLiveRealtimeService
 {
     readonly ConcurrentDictionary<string, MultiLiveRoomState> roomsByHallId = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<long, string> hallIdByMultiLiveId = new();
     readonly ConcurrentDictionary<string, string> hallIdByHashUserId = new(StringComparer.Ordinal);
+    static long nextMultiLiveId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     readonly LocalRequestLogger logger;
+    internal object SyncRoot { get; } = new();
 
     public MultiLiveRealtimeService(LocalRequestLogger logger)
     {
@@ -22,19 +24,21 @@ sealed class MultiLiveRealtimeService
         long userNamePlateColorId,
         MultiLiveCharacter? leaderCharacter)
     {
-        var room = CreateRoom(liveSettingMasterId, hallType, isPrivate: true);
-        var user = CreateUser(1, hashUserId, userName, userNamePlateColorId, leaderCharacter);
-        room.Users[user.MemberId] = user;
-        AddNpcUsers(room);
-        RegisterRoom(room, hashUserId);
-
-        return Task.FromResult(new MultiLiveCreatePrivateHallResult
+        lock (SyncRoot)
         {
-            IsSucceeded = true,
-            HallId = room.HallId,
-            MemberId = user.MemberId,
-            PrivateHallKeyCode = room.KeyCode
-        });
+            var room = CreateRoom(liveSettingMasterId, hallType, isPrivate: true);
+            var user = CreateUser(1, hashUserId, userName, userNamePlateColorId, leaderCharacter);
+            room.Users[user.MemberId] = user;
+            RegisterRoom(room, hashUserId);
+
+            return Task.FromResult(new MultiLiveCreatePrivateHallResult
+            {
+                IsSucceeded = true,
+                HallId = room.HallId,
+                MemberId = user.MemberId,
+                PrivateHallKeyCode = room.KeyCode
+            });
+        }
     }
 
     public Task<MultiLiveJoinResult> JoinPublicHallAsync(
@@ -46,37 +50,40 @@ sealed class MultiLiveRealtimeService
         long userNamePlateColorId,
         MultiLiveCharacter? leaderCharacter)
     {
-        var room = roomsByHallId.Values.FirstOrDefault(x =>
-            !x.IsPrivate &&
-            x.HallType == hallType &&
-            x.LiveSettingMasterId == liveSettingMasterId &&
-            x.Status is MultiLiveHallStatus.Recruiting or MultiLiveHallStatus.StandbyGame);
-
-        if (room is null)
+        lock (SyncRoot)
         {
-            room = CreateRoom(liveSettingMasterId, hallType, isPrivate: false);
-            AddNpcUsers(room);
-            RegisterRoom(room, hashUserId);
-        }
+            var room = roomsByHallId.Values.OrderByDescending(x => x.Users.Values.Any(u => u.HashUserId == hashUserId)).FirstOrDefault(x =>
+                !x.IsPrivate &&
+                x.HallType == hallType &&
+                x.LiveSettingMasterId == liveSettingMasterId &&
+                (x.Users.Count < 4 || x.Users.Values.Any(u => u.HashUserId == hashUserId)) &&
+                x.Status is MultiLiveHallStatus.Recruiting or MultiLiveHallStatus.StandbyGame);
 
-        var existing = room.Users.Values.FirstOrDefault(x => x.HashUserId == hashUserId);
-        if (existing is not null)
-        {
+            if (room is null)
+            {
+                room = CreateRoom(liveSettingMasterId, hallType, isPrivate: false);
+                RegisterRoom(room, hashUserId);
+            }
+
+            var existing = room.Users.Values.FirstOrDefault(x => x.HashUserId == hashUserId);
+            if (existing is not null)
+            {
+                hallIdByHashUserId[hashUserId] = room.HallId;
+                return Task.FromResult(MultiLiveJoinResult.Success(room.HallId, existing.MemberId, room.KeyCode, room.LiveSettingMasterId));
+            }
+
+            var memberId = NextMemberId(room);
+            if (memberId > 4)
+            {
+                return Task.FromResult(MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.ReachedMaxMember));
+            }
+
+            var user = CreateUser(memberId, hashUserId, userName, userNamePlateColorId, leaderCharacter);
+            room.Users[user.MemberId] = user;
             hallIdByHashUserId[hashUserId] = room.HallId;
-            return Task.FromResult(MultiLiveJoinResult.Success(room.HallId, existing.MemberId, room.KeyCode, room.LiveSettingMasterId));
+
+            return Task.FromResult(MultiLiveJoinResult.Success(room.HallId, user.MemberId, room.KeyCode, room.LiveSettingMasterId));
         }
-
-        var memberId = NextMemberId(room);
-        if (memberId > 5)
-        {
-            return Task.FromResult(MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.ReachedMaxMember));
-        }
-
-        var user = CreateUser(memberId, hashUserId, userName, userNamePlateColorId, leaderCharacter);
-        room.Users[user.MemberId] = user;
-        hallIdByHashUserId[hashUserId] = room.HallId;
-
-        return Task.FromResult(MultiLiveJoinResult.Success(room.HallId, user.MemberId, room.KeyCode, room.LiveSettingMasterId));
     }
 
     public Task<MultiLiveJoinResult> JoinPrivateHallWithKeyCodeAsync(
@@ -87,10 +94,13 @@ sealed class MultiLiveRealtimeService
         long userNamePlateColorId,
         MultiLiveCharacter? leaderCharacter)
     {
-        var room = roomsByHallId.Values.FirstOrDefault(x => x.IsPrivate && x.KeyCode == keyCode);
-        return room is null
-            ? Task.FromResult(MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.NotFoundHall))
-            : JoinRoomAsync(room, hashUserId, userName, userNamePlateColorId, leaderCharacter);
+        lock (SyncRoot)
+        {
+            var room = roomsByHallId.Values.FirstOrDefault(x => x.IsPrivate && x.KeyCode == keyCode);
+            return room is null
+                ? Task.FromResult(MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.NotFoundHall))
+                : JoinRoomAsync(room, hashUserId, userName, userNamePlateColorId, leaderCharacter);
+        }
     }
 
     public Task<MultiLiveJoinResult> JoinPrivateHallFromInviteAsync(
@@ -101,105 +111,132 @@ sealed class MultiLiveRealtimeService
         long userNamePlateColorId,
         MultiLiveCharacter? leaderCharacter)
     {
-        return roomsByHallId.TryGetValue(hallId, out var room)
-            ? JoinRoomAsync(room, hashUserId, userName, userNamePlateColorId, leaderCharacter)
-            : Task.FromResult(MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.NotFoundHall));
+        lock (SyncRoot)
+        {
+            return roomsByHallId.TryGetValue(hallId, out var room)
+                ? JoinRoomAsync(room, hashUserId, userName, userNamePlateColorId, leaderCharacter)
+                : Task.FromResult(MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.NotFoundHall));
+        }
     }
 
     public Task<MultiLiveFetchUsersResult> FetchUsersAsync(string hashUserId)
     {
-        return Task.FromResult(GetRoomForUser(hashUserId)?.ToFetchUsersResult() ?? EmptyFetchUsers());
+        lock (SyncRoot)
+        {
+            return Task.FromResult(GetRoomForUser(hashUserId)?.ToFetchUsersResult() ?? EmptyFetchUsers());
+        }
     }
 
     public Task SelectMusicAsync(string hashUserId, long musicId, bool isRandom, bool isAFK)
     {
-        if (TryGetUser(hashUserId, out _, out var user))
+        lock (SyncRoot)
         {
-            user.SelectedMusicId = musicId;
-            user.IsRandomMusic = isRandom;
-            user.IsAFK = isAFK;
-            user.IsSelectedMusic = true;
-            user.Status = MultiLiveUserStatus.SelectedMusic;
-        }
+            if (TryGetUser(hashUserId, out _, out var user))
+            {
+                user.SelectedMusicId = musicId;
+                user.IsRandomMusic = isRandom;
+                user.IsAFK = isAFK;
+                user.IsSelectedMusic = true;
+                user.Status = MultiLiveUserStatus.SelectedMusic;
+            }
 
-        return Task.CompletedTask;
+            return Task.CompletedTask;
+        }
     }
 
     public Task SelectDifficultyAsync(string hashUserId, MusicDifficulties difficulty, bool isAFK)
     {
-        if (TryGetUser(hashUserId, out _, out var user))
+        lock (SyncRoot)
         {
-            user.Difficulty = difficulty;
-            user.IsAFK = isAFK;
-            user.Status = MultiLiveUserStatus.SelectedDifficulty;
-        }
+            if (TryGetUser(hashUserId, out _, out var user))
+            {
+                user.Difficulty = difficulty;
+                user.IsAFK = isAFK;
+                user.Status = MultiLiveUserStatus.SelectedDifficulty;
+            }
 
-        return Task.CompletedTask;
+            return Task.CompletedTask;
+        }
     }
 
     public Task SelectStampAsync(string hashUserId, long stampId)
     {
-        return logger.LogAsync($"realtime-multi-live-stamp hashUserId={hashUserId} stampId={stampId}");
+        lock (SyncRoot)
+        {
+            return logger.LogAsync($"realtime-multi-live-stamp hashUserId={hashUserId} stampId={stampId}");
+        }
     }
 
     public Task ReadyGameAsync(string hashUserId)
     {
-        if (TryGetUser(hashUserId, out var room, out var user))
+        lock (SyncRoot)
         {
-            user.Status = MultiLiveUserStatus.ReadyGame;
-            foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
+            if (TryGetUser(hashUserId, out var room, out var user))
             {
-                npc.Status = MultiLiveUserStatus.ReadyGame;
+                user.Status = MultiLiveUserStatus.ReadyGame;
+                foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
+                {
+                    npc.Status = MultiLiveUserStatus.ReadyGame;
+                }
+
+                room.Status = MultiLiveHallStatus.ReadyGame;
             }
 
-            room.Status = MultiLiveHallStatus.ReadyGame;
+            return Task.CompletedTask;
         }
-
-        return Task.CompletedTask;
     }
 
     public Task BeforeGameCalculateAsync(string hashUserId)
     {
-        if (TryGetUser(hashUserId, out var room, out var user))
+        lock (SyncRoot)
         {
-            user.Status = MultiLiveUserStatus.BeforeGameCalculate;
-            foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
+            if (TryGetUser(hashUserId, out var room, out var user))
             {
-                npc.Status = MultiLiveUserStatus.BeforeGameCalculate;
+                user.Status = MultiLiveUserStatus.BeforeGameCalculate;
+                foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
+                {
+                    npc.Status = MultiLiveUserStatus.BeforeGameCalculate;
+                }
+
+                room.Status = MultiLiveHallStatus.BeforeGameCalculate;
             }
 
-            room.Status = MultiLiveHallStatus.BeforeGameCalculate;
+            return Task.CompletedTask;
         }
-
-        return Task.CompletedTask;
     }
 
     public Task StartGameAsync(string hashUserId)
     {
-        if (TryGetUser(hashUserId, out var room, out var user))
+        lock (SyncRoot)
         {
-            user.Status = MultiLiveUserStatus.PlayingGame;
-            foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
+            if (TryGetUser(hashUserId, out var room, out var user))
             {
-                npc.Status = MultiLiveUserStatus.PlayingGame;
+                user.Status = MultiLiveUserStatus.PlayingGame;
+                foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
+                {
+                    npc.Status = MultiLiveUserStatus.PlayingGame;
+                }
+
+                room.Status = MultiLiveHallStatus.PlayingGame;
             }
 
-            room.Status = MultiLiveHallStatus.PlayingGame;
+            return Task.CompletedTask;
         }
-
-        return Task.CompletedTask;
     }
 
     public Task SyncInGameStatusAsync(string hashUserId, int comboCount, ComboTypes comboType, int life)
     {
-        if (TryGetUser(hashUserId, out _, out var user))
+        lock (SyncRoot)
         {
-            user.ComboCount = comboCount;
-            user.ComboType = comboType;
-            user.Life = life;
-        }
+            if (TryGetUser(hashUserId, out _, out var user))
+            {
+                user.ComboCount = comboCount;
+                user.ComboType = comboType;
+                user.Life = life;
+            }
 
-        return Task.CompletedTask;
+            return Task.CompletedTask;
+        }
     }
 
     public Task ExitGameAsync(
@@ -209,104 +246,125 @@ sealed class MultiLiveRealtimeService
         IReadOnlyDictionary<int, int>? timingCounts,
         int maxCombo)
     {
-        if (TryGetUser(hashUserId, out var room, out var user))
+        lock (SyncRoot)
         {
-            user.Score = score;
-            user.ClearLamp = clearLamp;
-            user.MaxCombo = maxCombo;
-            user.IsExitGame = true;
-            user.Status = MultiLiveUserStatus.ExitGame;
-            user.TimingCounts.Clear();
-
-            if (timingCounts is not null)
+            if (TryGetUser(hashUserId, out var room, out var user))
             {
-                foreach (var pair in timingCounts)
+                user.Score = score;
+                user.ClearLamp = clearLamp;
+                user.MaxCombo = maxCombo;
+                user.IsExitGame = true;
+                user.Status = MultiLiveUserStatus.ExitGame;
+                user.TimingCounts.Clear();
+
+                if (timingCounts is not null)
                 {
-                    user.TimingCounts[pair.Key] = pair.Value;
+                    foreach (var pair in timingCounts)
+                    {
+                        user.TimingCounts[pair.Key] = pair.Value;
+                    }
+                }
+
+                foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
+                {
+                    npc.Score = Math.Max(1, score - Random.Shared.Next(10000, 80000));
+                    npc.ClearLamp = ClearLamps.Clear;
+                    npc.MaxCombo = Math.Max(1, maxCombo - Random.Shared.Next(20, 180));
+                    npc.IsExitGame = true;
+                    npc.Status = MultiLiveUserStatus.ExitGame;
                 }
             }
 
-            foreach (var npc in room.Users.Values.Where(x => x.HashUserId.StartsWith("npc-", StringComparison.Ordinal)))
-            {
-                npc.Score = Math.Max(1, score - Random.Shared.Next(10000, 80000));
-                npc.ClearLamp = ClearLamps.Clear;
-                npc.MaxCombo = Math.Max(1, maxCombo - Random.Shared.Next(20, 180));
-                npc.IsExitGame = true;
-                npc.Status = MultiLiveUserStatus.ExitGame;
-            }
+            return Task.CompletedTask;
         }
-
-        return Task.CompletedTask;
     }
 
     public Task EntryFinalResultAsync(string hashUserId)
     {
-        if (TryGetUser(hashUserId, out var room, out _))
+        lock (SyncRoot)
         {
-            room.Status = MultiLiveHallStatus.None;
-        }
+            if (TryGetUser(hashUserId, out var room, out _))
+            {
+                room.Status = MultiLiveHallStatus.None;
+            }
 
-        return Task.CompletedTask;
+            return Task.CompletedTask;
+        }
     }
 
     public Task ContinuePlayAsync(string hashUserId)
     {
-        if (TryGetUser(hashUserId, out var room, out var user))
+        lock (SyncRoot)
         {
-            user.IsExitGame = false;
-            user.Status = MultiLiveUserStatus.Joined;
-            room.Status = MultiLiveHallStatus.StandbyGame;
-        }
+            if (TryGetUser(hashUserId, out var room, out var user))
+            {
+                user.IsExitGame = false;
+                user.Status = MultiLiveUserStatus.Joined;
+                room.Status = MultiLiveHallStatus.StandbyGame;
+            }
 
-        return Task.CompletedTask;
+            return Task.CompletedTask;
+        }
     }
 
     public object?[] GetMultiLiveInformation(long multiLiveId)
     {
-        if (hallIdByMultiLiveId.TryGetValue(multiLiveId, out var hallId) &&
-            roomsByHallId.TryGetValue(hallId, out var room))
+        lock (SyncRoot)
         {
-            var map = new Dictionary<string, object?>();
-            foreach (var user in room.Users.Values.Where(x => x.Status >= MultiLiveUserStatus.PlayingGame))
+            if (hallIdByMultiLiveId.TryGetValue(multiLiveId, out var hallId) &&
+                roomsByHallId.TryGetValue(hallId, out var room))
             {
-                var key = Math.Max(user.MaxCombo, user.MemberId * 13).ToString();
-                if (!map.TryGetValue(key, out var bucket) || bucket is not List<object?> list)
+                var map = new Dictionary<string, object?>();
+                foreach (var user in room.Users.Values.Where(x => x.Status >= MultiLiveUserStatus.PlayingGame))
                 {
-                    list = new List<object?>();
-                    map[key] = list;
+                    var key = Math.Max(user.MaxCombo, user.MemberId * 13).ToString();
+                    if (!map.TryGetValue(key, out var bucket) || bucket is not List<object?> list)
+                    {
+                        list = new List<object?>();
+                        map[key] = list;
+                    }
+
+                    list.Add(new object?[] { StableIntId(user.HashUserId, 10000000, 99999999), user.HashUserId, int.Parse(key) });
                 }
 
-                list.Add(new object?[] { StableIntId(user.HashUserId, 10000000, 99999999), user.HashUserId, int.Parse(key) });
+                return new object?[] { map.ToDictionary(x => x.Key, x => (object?)((List<object?>)x.Value!).ToArray()) };
             }
 
-            return new object?[] { map.ToDictionary(x => x.Key, x => (object?)((List<object?>)x.Value!).ToArray()) };
+            return Array.Empty<object?>();
         }
-
-        return Array.Empty<object?>();
     }
 
     public MultiLiveRoomState? GetRoomByMultiLiveId(long multiLiveId)
     {
-        return hallIdByMultiLiveId.TryGetValue(multiLiveId, out var hallId) &&
-               roomsByHallId.TryGetValue(hallId, out var room)
-            ? room
-            : null;
+        lock (SyncRoot)
+        {
+            return hallIdByMultiLiveId.TryGetValue(multiLiveId, out var hallId) &&
+                   roomsByHallId.TryGetValue(hallId, out var room)
+                ? room
+                : null;
+        }
     }
 
     public MultiLiveRoomState? GetRoomForUser(string hashUserId)
     {
-        return hallIdByHashUserId.TryGetValue(hashUserId, out var hallId) &&
-               roomsByHallId.TryGetValue(hallId, out var room)
-            ? room
-            : null;
+        lock (SyncRoot)
+        {
+            return hallIdByHashUserId.TryGetValue(hashUserId, out var hallId) &&
+                   roomsByHallId.TryGetValue(hallId, out var room)
+                ? room
+                : null;
+        }
     }
 
     public IReadOnlyCollection<MultiLiveRoomState> SnapshotRooms()
     {
-        return roomsByHallId.Values.OrderByDescending(x => x.CreatedAt).ToArray();
+        lock (SyncRoot)
+        {
+            return roomsByHallId.Values.OrderByDescending(x => x.CreatedAt).ToArray();
+        }
     }
 
-    async Task<MultiLiveJoinResult> JoinRoomAsync(
+    Task<MultiLiveJoinResult> JoinRoomAsync(
         MultiLiveRoomState room,
         string hashUserId,
         string userName,
@@ -316,35 +374,32 @@ sealed class MultiLiveRealtimeService
         if (room.Users.Values.Any(x => x.HashUserId == hashUserId))
         {
             var existing = room.Users.Values.First(x => x.HashUserId == hashUserId);
-            return MultiLiveJoinResult.Success(room.HallId, existing.MemberId, room.KeyCode, room.LiveSettingMasterId);
+            return Task.FromResult(MultiLiveJoinResult.Success(room.HallId, existing.MemberId, room.KeyCode, room.LiveSettingMasterId));
         }
 
         var memberId = NextMemberId(room);
-        if (memberId > 5)
+        if (memberId > 4)
         {
-            return MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.ReachedMaxMember);
+            return Task.FromResult(MultiLiveJoinResult.Error(MultiLiveJoinErrorCodes.ReachedMaxMember));
         }
 
         var user = CreateUser(memberId, hashUserId, userName, userNamePlateColorId, leaderCharacter);
         room.Users[user.MemberId] = user;
         hallIdByHashUserId[hashUserId] = room.HallId;
-        await logger.LogAsync($"realtime-multi-live-join hallId={room.HallId} memberId={memberId} hashUserId={hashUserId}");
-        return MultiLiveJoinResult.Success(room.HallId, memberId, room.KeyCode, room.LiveSettingMasterId);
+        return Task.FromResult(MultiLiveJoinResult.Success(room.HallId, memberId, room.KeyCode, room.LiveSettingMasterId));
     }
 
     MultiLiveRoomState CreateRoom(long liveSettingMasterId, MultiLiveHallType hallType, bool isPrivate)
     {
-        var multiLiveId = liveSettingMasterId switch
-        {
-            17401 => 11868654,
-            7501 => 11868622,
-            _ => StableIntId($"{liveSettingMasterId}:{DateTime.UtcNow.Ticks}", 11000000, 11999999)
-        };
+        var multiLiveId = Interlocked.Increment(ref nextMultiLiveId);
+        int keyCode;
+        do { keyCode = Random.Shared.Next(100000, 1000000); }
+        while (roomsByHallId.Values.Any(room => room.KeyCode == keyCode));
 
         return new MultiLiveRoomState
         {
-            HallId = $"local-{multiLiveId}",
-            KeyCode = Random.Shared.Next(100000, 999999),
+            HallId = Guid.NewGuid().ToString("N"),
+            KeyCode = keyCode,
             MultiLiveId = multiLiveId,
             LiveSettingMasterId = liveSettingMasterId,
             HallType = hallType,
@@ -379,30 +434,14 @@ sealed class MultiLiveRealtimeService
         };
     }
 
-    static void AddNpcUsers(MultiLiveRoomState room)
-    {
-        var names = new[] { "AutoGuestA", "AutoGuestB", "AutoGuestC", "AutoGuestD" };
-        var characters = new long[] { 110010, 110030, 110050, 110060 };
-        for (var memberId = 2; memberId <= 4; memberId++)
-        {
-            if (room.Users.ContainsKey(memberId)) continue;
-            room.Users[memberId] = CreateUser(
-                memberId,
-                $"npc-{room.HallId}-{memberId}",
-                names[memberId - 2],
-                180001,
-                MultiLiveCharacter.Default(characters[memberId - 2]));
-        }
-    }
-
     static int NextMemberId(MultiLiveRoomState room)
     {
-        for (var i = 1; i <= 5; i++)
+        for (var i = 1; i <= 4; i++)
         {
             if (!room.Users.ContainsKey(i)) return i;
         }
 
-        return 6;
+        return 5;
     }
 
     bool TryGetUser(string hashUserId, out MultiLiveRoomState room, out MultiLiveUser user)

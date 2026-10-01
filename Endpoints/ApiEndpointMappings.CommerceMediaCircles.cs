@@ -1,4 +1,4 @@
-﻿static partial class ApiEndpointMappings
+static partial class ApiEndpointMappings
 {
     static void MapCommerceMediaCircleEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
@@ -95,32 +95,27 @@
 
         app.MapMethods("/localap/api/Shops/ViewPage", new[] { "GET", "POST" }, async context =>
         {
-            var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
-            await logger.LogAsync($"shops-view-page payload={ValueFormatter.Format(body)}");
-            await codec.WriteApiFramesAsync(
-                context,
-                new object?[] { Array.Empty<object?>() },
-                new object?[] { null },
-                Array.Empty<object?>(),
-                Array.Empty<object?>());
+            var present = await state.UserDataService.GetShopPurchasePresentAsync(context);
+            await codec.WriteApiFramesAsync(context, new object?[] { Array.Empty<object?>() }, present,
+                Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapMethods("/localap/api/Shops/Purchase", new[] { "GET", "POST" }, async context =>
+        app.MapPost("/localap/api/Shops/Purchase", async context =>
         {
-            var body = await codec.ReadRequestBodyAsync(context);
-            await logger.LogAsync($"shops-purchase payload={ValueFormatter.Format(body)}");
-            var missionPresent = await state.UserDataService.MarkShopFreePackMissionAsync(context, body);
-            var purchasePresent = GameResults.ShopPurchasePresentData(body)
-                .Where(frame => frame is not object?[] { Length: >= 2 } values || values[0] is not (0 or 48 or 128))
-                .Concat(missionPresent)
-                .ToArray();
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.ShopPurchaseResult(),
-                purchasePresent,
-                Array.Empty<object?>(),
-                GameResults.ShopPurchaseNotifications(),
-                "present-lz4-when-not-empty-five-frame");
+            try
+            {
+                var body = await codec.ReadRequestBodyAsync(context);
+                var purchase = await state.UserDataService.PurchaseDailyFreePackAsync(context, body);
+                await codec.WriteApiFramesAsync(context, purchase.Rewards, purchase.Present, Array.Empty<object?>(),
+                    GameResults.ShopPurchaseNotifications(), "present-lz4-when-not-empty-five-frame");
+            }
+            catch (BadHttpRequestException error)
+            {
+                await logger.LogAsync($"level=WARN operation=shop-purchase errorCode={error.Message} outcome=failed");
+                context.Response.StatusCode = error.StatusCode;
+                await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(),
+                    Array.Empty<object?>(), Array.Empty<object?>(), "five-frame");
+            }
         });
 
         app.MapMethods("/localap/api/Shops/UpdateLastViewedAt", new[] { "GET", "POST" }, async context =>
