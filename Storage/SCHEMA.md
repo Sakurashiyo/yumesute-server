@@ -171,3 +171,5 @@ erDiagram
 常设商店复用 `user_raw_union_states` 保存协议对象：149 为商品购买次数，45/129 为铭牌和装饰持有，182 为头像框集合；购买在玩家行锁下与货币/道具更新一起提交，不新增存储表。
 
 稽古开始快照新增第三项卡片战力映射 `[LessonParty, Cards, StatusByCardId]`，卡片 ID 以十进制字符串作为映射键。旧版两项快照在读取未完成场次时补存第三项，不更改次数或奖励。战力采用解包 CharacterMaster、CharacterLevelMaster、CharacterBloomBonusGroupMaster、EffectMaster 与 CharacterStarRankMaster；星章加成为 `min(当前星章加成, 高分满足的最大加成)`，高分缺省为 0 时上限 2.5%。
+
+剧情进度：`user_episode_read_states` 一条记录表示已读，key95第二字段为 `has_read_all`（非 is_new）。新增列默认false，ReadAll只能升级为true；重复Read不降级。前置剧情、一次性奖励和已读写入在玩家状态行锁与同一事务内处理。主数据奖励类型1/13发放道具/免费宝石，3海报持有状态保存在raw union28，8铭牌保存在45。两份宝石余额同步，重登录包含28与95。旧教程已读记录不重复补发奖励。

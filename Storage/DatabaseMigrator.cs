@@ -1327,6 +1327,8 @@ static class DatabaseMigrator
       primary key ("userId", episode_master_id)
     );
 
+    alter table user_episode_read_states add column if not exists has_read_all boolean not null default false;
+
     create table if not exists user_photo_records (
       id bigint primary key,
       "userId" bigint not null references user_accounts(id) on delete cascade,

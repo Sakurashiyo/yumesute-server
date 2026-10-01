@@ -244,57 +244,7 @@ static partial class ApiEndpointMappings
             await context.Response.Body.WriteAsync(payload);
         });
 
-        app.MapPost("/localap/api/Episodes/{episodeMasterId:long}/Read", async (HttpContext context, long episodeMasterId) =>
-        {
-            await logger.LogAsync($"episodes-read episodeMasterId={episodeMasterId} query={context.Request.QueryString}");
-            var result = await state.UserDataService.ReadEpisodeAsync(context, episodeMasterId);
-            await codec.WriteApiFramesAsync(
-                context,
-                result.Rewards,
-                result.PresentData,
-                Array.Empty<object?>(),
-                result.Notifications,
-                "present-lz4-when-not-empty-five-frame");
-        });
-
-        app.MapPost("/localap/api/Episodes/{episodeMasterId:long}/ReadAll", async (HttpContext context, long episodeMasterId) =>
-        {
-            await logger.LogAsync($"episodes-read-all episodeMasterId={episodeMasterId} query={context.Request.QueryString}");
-            var result = await state.UserDataService.ReadEpisodeAsync(context, episodeMasterId);
-            await codec.WriteApiFramesAsync(
-                context,
-                result.Rewards,
-                result.PresentData,
-                Array.Empty<object?>(),
-                result.Notifications,
-                "present-lz4-when-not-empty-five-frame");
-        });
-
-        app.MapPost("/localap/api/Episodes/{episodeMasterId:long}/ReadAsync", async (HttpContext context, long episodeMasterId) =>
-        {
-            await logger.LogAsync($"episodes-read-async episodeMasterId={episodeMasterId} query={context.Request.QueryString}");
-            var result = await state.UserDataService.ReadEpisodeAsync(context, episodeMasterId);
-            await codec.WriteApiFramesAsync(
-                context,
-                result.Rewards,
-                result.PresentData,
-                Array.Empty<object?>(),
-                result.Notifications,
-                "present-lz4-when-not-empty-five-frame");
-        });
-
-        app.MapPost("/localap/api/Episodes/{episodeMasterId:long}/ReadAllAsync", async (HttpContext context, long episodeMasterId) =>
-        {
-            await logger.LogAsync($"episodes-read-all-async episodeMasterId={episodeMasterId} query={context.Request.QueryString}");
-            var result = await state.UserDataService.ReadEpisodeAsync(context, episodeMasterId);
-            await codec.WriteApiFramesAsync(
-                context,
-                result.Rewards,
-                result.PresentData,
-                Array.Empty<object?>(),
-                result.Notifications,
-                "present-lz4-when-not-empty-five-frame");
-        });
+        MapEpisodeReadEndpoints(app, state, codec, logger);
 
         MapHomePlayerEventEndpoints(app, state, codec, logger);
 

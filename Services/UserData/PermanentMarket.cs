@@ -110,11 +110,17 @@ sealed partial class UserDataService
 
     static async Task<object?[]> ReadPermanentMarketDataAsync(NpgsqlConnection connection,long userId)
     {
-        await using var command = new NpgsqlCommand("select union_key,payload::text from user_raw_union_states where \"userId\"=$1 and union_key in (45,129,149,182) order by union_key,object_key",connection);
+        await using var command = new NpgsqlCommand("select union_key,payload::text from user_raw_union_states where \"userId\"=$1 and union_key in (28,45,129,149,182) order by union_key,object_key",connection);
         command.Parameters.AddWithValue(userId);
         var data = new List<object?>();
-        static object Read(JsonElement field) => field.ValueKind == JsonValueKind.Array
-            ? field.EnumerateArray().Select(Read).ToArray() : field.GetInt64();
+        static object Read(JsonElement field) => field.ValueKind switch
+        {
+            JsonValueKind.Array => field.EnumerateArray().Select(Read).ToArray(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number => field.GetInt64(),
+            _ => throw new InvalidOperationException("物品协议存档包含不支持的字段类型")
+        };
         await using var reader = await command.ExecuteReaderAsync();
         while(await reader.ReadAsync())
         {
