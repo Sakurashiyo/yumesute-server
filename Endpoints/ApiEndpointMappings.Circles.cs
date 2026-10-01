@@ -2,6 +2,15 @@ static partial class ApiEndpointMappings
 {
     static void MapCircleEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
+        app.MapPost("/localap/api/Circles/JoinPreRequest", async context =>
+            await codec.WriteApiResultAsync(context,
+                await state.UserDataService.CheckCircleJoinAsync(context, context.Request.Query["circleId"].ToString()), "five-frame"));
+        app.MapPost("/localap/api/Circles/Join", async context =>
+        {
+            var joined = await state.UserDataService.JoinCircleAsync(context, context.Request.Query["circleId"].ToString());
+            await codec.WriteApiFramesAsync(context, joined.Result, joined.Present, Array.Empty<object?>(),
+                Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
+        });
         app.MapPost("/localap/api/Circles/Create", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);

@@ -3,6 +3,10 @@ static class CircleProtocol
     // 与客户端 CircleResultStatus 共用编号，不能用 HTTP 状态代替业务状态。
     public const int RequestIllegal = 1;
     public const int AlreadyJoined = 4;
+    public const int FreeEntry = 6;
+    public const int PreRequestSuccess = 9;
+    public const int JoinSuccess = 12;
+    public const int MemberAmountUpperLimit = 24;
     public const int CreateSuccess = 14;
     public const int EditSuccess = 13;
     public const int DataNotFound = 19;
