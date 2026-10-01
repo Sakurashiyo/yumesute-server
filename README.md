@@ -73,23 +73,8 @@ dotnet run --project SiriusLocalServer.csproj
 
 本项目是由社区维护的非官方项目，与《ワールドダイスター 夢のステラリウム》（World Dai Star: Yume no Stellarium）的开发商、发行商及相关权利方不存在隶属、授权或合作关系。
 
-### 游戏资源
 
-也许你可以在 [asset-of-dreams](https://github.com/Ryota537/asset-of-dreams) 中找到你需要的东西。  
-感谢 [Ryota537](https://github.com/Ryota537) 大佬
-
-### 贡献
-
-欢迎通过 Issue 或 Pull Request 参与项目，包括但不限于：
-
-- 修复服务端接口或协议实现；
-- 完善缺失的 API；
-- 改进数据解析与资源加载逻辑；
-- 补充项目文档；
-- 修复兼容性问题。
-
-提交贡献时，请确保提交的内容是你有权发布的内容。
-
-请不要在 Issue、Pull Request 或提交记录中直接上传未经授权的游戏资源、密钥、访问令牌或其他不适合公开分发的内容。
-
-贡献到本项目的代码将按照本项目所采用的开源许可证进行发布。
+## 鸣谢
+非常感谢以下大佬们对游戏资源进行的备份!
+- [Adv-Resource](https://github.com/wds-sirius/Adv-Resource) 
+- [asset-of-dreams](https://github.com/Ryota537/asset-of-dreams)
