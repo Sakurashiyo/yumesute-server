@@ -217,7 +217,7 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var present = await state.UserDataService.SetPortalCharacterAsync(context, body);
-            await codec.WriteApiFramesAsync(context, new object?[] { true }, present, Array.Empty<object?>(), Array.Empty<object?>());
+            await codec.WriteApiFramesAsync(context, new object?[] { true }, present, Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapPost("/localap/api/Characters/{characterId:long}/AddExperience", async (HttpContext context, long characterId) =>

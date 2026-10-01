@@ -283,7 +283,12 @@ sealed partial class UserDataService
                   and character_card."userId" = $1
                   and character_card.character_master_id = $3
                   and character_card.character_base_id = character_base.id
-                  and character_base.selected_character_id is distinct from character_card.id
+                  and not exists (
+                    select 1 from user_character_cards selected
+                    where selected.id = character_base.selected_character_id
+                      and selected."userId" = character_base."userId"
+                      and selected.character_base_id = character_base.id
+                  )
                 """,
                 userId, baseMasterId, cardMasterId);
         }
@@ -862,8 +867,8 @@ sealed partial class UserDataService
                 0,
                 costumeMasterId,
                 0,
-                // PortalCharacterId 必须引用玩家卡片实例，不能引用 CharacterMaster 的主数据 ID。
-                characterId,
+                // Portal 的资源查找使用 CharacterMasterId，队伍等内部关联仍使用实例 ID。
+                characterMasterId,
                 false
             });
 
@@ -1340,10 +1345,14 @@ sealed partial class UserDataService
     {
         await using var command = new NpgsqlCommand(
             """
-            select *
-            from user_character_bases
-            where "userId" = $1
-            order by id
+            select character_base.*, selected.character_master_id as portal_character_master_id
+            from user_character_bases character_base
+            left join user_character_cards selected
+              on selected.id = character_base.selected_character_id
+             and selected."userId" = character_base."userId"
+             and selected.character_base_id = character_base.id
+            where character_base."userId" = $1
+            order by character_base.id
             """,
             connection);
         command.Parameters.AddWithValue(userId);
@@ -1360,8 +1369,9 @@ sealed partial class UserDataService
                 reader.GetInt32(reader.GetOrdinal("exp")),
                 reader.GetInt64(reader.GetOrdinal("costume_master_id")),
                 reader.GetInt32(reader.GetOrdinal("rank")),
-                GetNullableInt64(reader, reader.GetOrdinal("selected_character_id")) ?? UserScopedId(userId, DefaultCharacterId),
-                reader.GetBoolean(reader.GetOrdinal("is_new"))
+                GetNullableInt64(reader, reader.GetOrdinal("portal_character_master_id"))
+                    ?? throw new InvalidOperationException("Actor Portal 选中卡片关联无效"),
+                reader.GetBoolean(reader.GetOrdinal("portal_display_awakening_status"))
             });
         }
         return result;

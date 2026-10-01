@@ -46,8 +46,8 @@ sealed partial class UserDataService
             ?? throw new BadHttpRequestException(CharacterProgressionErrors.InvalidRequest);
         if (payload is not object?[] { Length: >= 3 } values
             || GetLong(values, 0) is not long characterBaseId
-            || GetLong(values, 1) is not long characterId
-            || GetBool(values, 2) is null)
+            || GetLong(values, 1) is not long characterMasterId
+            || GetBool(values, 2) is not bool awakening)
         {
             throw new BadHttpRequestException(CharacterProgressionErrors.InvalidRequest);
         }
@@ -57,18 +57,19 @@ sealed partial class UserDataService
         await using var command = new NpgsqlCommand(
             """
             update user_character_bases as character_base
-            set selected_character_id = $3
+            set selected_character_id = selected.id, portal_display_awakening_status = $4
+            from user_character_cards selected
             where character_base."userId" = $1
               and character_base.id = $2
-              and exists (
-                select 1 from user_character_cards
-                where "userId" = $1 and id = $3 and character_base_id = $2
-              )
+              and selected."userId" = $1
+              and selected.character_master_id = $3
+              and selected.character_base_id = character_base.id
             returning character_base.character_base_master_id
             """, connection);
         command.Parameters.AddWithValue(userId);
         command.Parameters.AddWithValue(characterBaseId);
-        command.Parameters.AddWithValue(characterId);
+        command.Parameters.AddWithValue(characterMasterId);
+        command.Parameters.AddWithValue(awakening);
         if (await command.ExecuteScalarAsync() is not long characterBaseMasterId)
         {
             throw new BadHttpRequestException(CharacterProgressionErrors.CharacterMissing, StatusCodes.Status404NotFound);

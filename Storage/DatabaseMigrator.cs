@@ -181,6 +181,14 @@ static class DatabaseMigrator
     static StaticColumn Jsonb(string name, int index, bool primary = false) =>
         new(name, "jsonb", NpgsqlDbType.Jsonb, StaticColumnKind.Jsonb, index, primary);
 
+    public static async Task MigrateActorPortalAsync(NpgsqlConnection connection)
+    {
+        // 保留原有实例关联，仅补充客户端 Portal 独立的觉醒卡面显示状态。
+        await using var command = new NpgsqlCommand(
+            "alter table user_character_bases add column if not exists portal_display_awakening_status boolean not null default false", connection);
+        await command.ExecuteNonQueryAsync();
+    }
+
     public static async Task MigrateAsync(PostgresDatabase database, LocalConfig? config = null)
     {
         await using var connection = await database.OpenConnectionAsync();
@@ -190,6 +198,7 @@ static class DatabaseMigrator
         await CharacterMissionSchema.MigrateAsync(connection);
         await AnotherNotationSchema.MigrateAsync(connection);
         await MigrateCharacterSenseLevelsAsync(connection);
+        await MigrateActorPortalAsync(connection);
         if (config is not null)
         {
             await SeedActiveMasterDataVersionAsync(connection, config);
