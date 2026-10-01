@@ -1,4 +1,4 @@
-﻿sealed class LocalAssetResolver
+sealed partial class LocalAssetResolver
 {
     readonly LocalConfig config;
     readonly LocalRequestLogger logger;

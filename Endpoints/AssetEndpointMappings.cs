@@ -1,4 +1,4 @@
-﻿static class AssetEndpointMappings
+static class AssetEndpointMappings
 {
     public static void MapAssetEndpoints(this WebApplication app, LocalServerState state)
     {
@@ -6,13 +6,13 @@
         var codec = state.Codec;
         var assets = state.Assets;
 
-        app.MapGet("/master/{**file}", async (HttpContext context, string? file) =>
+        app.MapMethods("/master/{**file}", new[] { "GET", "HEAD" }, async (HttpContext context, string? file) =>
         {
             codec.SetCommonHeaders(context);
             var normalizedFile = Uri.UnescapeDataString(file ?? "").Replace('\\', '/').TrimStart('/');
             if (normalizedFile.StartsWith("scenes/", StringComparison.OrdinalIgnoreCase))
             {
-                await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(normalizedFile), codec);
+                await assets.SendSceneFileAsync(context, assets.ResolveAssetFile(normalizedFile), codec);
                 return;
             }
 
@@ -36,7 +36,7 @@
 
         app.MapMethods("/scenes/{file}", new[] { "GET", "HEAD" }, async (HttpContext context, string file) =>
         {
-            await assets.SendLocalFileAsync(context, assets.ResolveAssetFile($"scenes/{file}"), codec);
+            await assets.SendSceneFileAsync(context, assets.ResolveAssetFile($"scenes/{file}"), codec);
         });
 
         app.MapMethods("/localassets/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
