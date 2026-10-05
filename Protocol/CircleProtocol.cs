@@ -12,7 +12,7 @@ static class CircleProtocol
     public const int DataNotFound = 19;
     public const int SearchSuccess = 20;
     public const int InvalidParameter = 25;
-    public const string Unauthorized = "ACCOUNT_UNAUTHORIZED";
+    public const string Unauthorized = AccountErrors.Unauthorized;
 
     public sealed record Payload(string Name, string Comment, int Start, int End, int Entry, int Member, long? Company, long? CharacterBase);
 

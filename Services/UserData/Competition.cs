@@ -20,7 +20,7 @@ sealed partial class UserDataService
 
     async Task<CompetitionPlayerSnapshot> ReadCompetitionPlayerAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null)
         {
             var fallbackData = GameResults.UserData();

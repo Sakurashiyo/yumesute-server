@@ -26,63 +26,11 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             var name = PayloadReaders.ReadRegisterName(body) ?? $"Player-{Random.Shared.Next(100000, 999999)}";
             var result = await state.AccountService.RegisterGameAccountAsync(name);
-            state.Accounts[result.LoginToken] = new LocalAccount(result.LoginToken, name);
-            await state.SaveLastRegisteredLoginTokenAsync(result.LoginToken);
-            await logger.LogAsync($"register name={name} userId={result.User.Id} publicId={result.User.PublicId} token={result.LoginToken}");
+            await logger.LogAsync($"level=INFO operation=account-register userId={result.User.Id} outcome=success");
             await codec.WriteApiResultAsync(context, new object?[] { result.LoginToken, 0 }, config.RegisterResponseMode);
         });
 
-        app.MapPost("/localap/api/Account/Authenticate", async context =>
-        {
-            var bodyBytes = await codec.ReadRequestBytesAsync(context);
-            var bodyFrames = MagicOnionLz4.UnwrapFrames(MsgPack.DecodeAll(bodyBytes));
-            await logger.LogAsync($"authenticate raw frames={ValueFormatter.Format(bodyFrames)}");
-            var payload = PayloadReaders.ReadAuthenticatePayloadFromRaw(bodyBytes, config.ApplicationVersion);
-            Console.WriteLine(payload.LoginToken);
-            Console.WriteLine(payload.GameVersion);
-            Console.WriteLine(payload.ApkHash);
-            Console.WriteLine(payload.ApkApplicationSignature);
-            Console.WriteLine(payload.ApplicationVersion);
-            await logger.LogAsync($"authenticate payload LoginToken={payload.LoginToken} GameVersion={payload.GameVersion} ApkHash={payload.ApkHash} ApkApplicationSignature={payload.ApkApplicationSignature} ApplicationVersion={payload.ApplicationVersion}");
-            if (!LooksLikeJwt(payload.LoginToken)
-                && !string.IsNullOrWhiteSpace(state.LastRegisteredLoginToken)
-                && !string.Equals(payload.LoginToken, state.LastRegisteredLoginToken, StringComparison.Ordinal))
-            {
-                await logger.LogAsync($"authenticate using last registered token; original LoginToken={payload.LoginToken} replacement={state.LastRegisteredLoginToken}");
-                payload = payload with { LoginToken = state.LastRegisteredLoginToken };
-            }
-            var result = string.IsNullOrWhiteSpace(payload.LoginToken)
-                ? await state.AccountService.AuthenticateMostRecentClientAsync(payload)
-                : await state.AccountService.AuthenticateClientAsync(payload);
-            await logger.LogAsync($"authenticate loginToken={payload.LoginToken} userId={result.User.Id} publicId={result.User.PublicId}");
-            await codec.WriteApiResultAsync(context, new object?[] { result.ApiToken, 0, null }, "lz4-five-frame");
-        });
-
-        app.MapPost("/localap/api/Account/AuthenticateAndSetApiToken", async context =>
-        {
-            var bodyBytes = await codec.ReadRequestBytesAsync(context);
-            var bodyFrames = MagicOnionLz4.UnwrapFrames(MsgPack.DecodeAll(bodyBytes));
-            await logger.LogAsync($"authenticate-set-token raw frames={ValueFormatter.Format(bodyFrames)}");
-            var payload = PayloadReaders.ReadAuthenticatePayloadFromRaw(bodyBytes, config.ApplicationVersion);
-            Console.WriteLine(payload.LoginToken);
-            Console.WriteLine(payload.GameVersion);
-            Console.WriteLine(payload.ApkHash);
-            Console.WriteLine(payload.ApkApplicationSignature);
-            Console.WriteLine(payload.ApplicationVersion);
-            await logger.LogAsync($"authenticate-set-token payload LoginToken={payload.LoginToken} GameVersion={payload.GameVersion} ApkHash={payload.ApkHash} ApkApplicationSignature={payload.ApkApplicationSignature} ApplicationVersion={payload.ApplicationVersion}");
-            if (!LooksLikeJwt(payload.LoginToken)
-                && !string.IsNullOrWhiteSpace(state.LastRegisteredLoginToken)
-                && !string.Equals(payload.LoginToken, state.LastRegisteredLoginToken, StringComparison.Ordinal))
-            {
-                await logger.LogAsync($"authenticate-set-token using last registered token; original LoginToken={payload.LoginToken} replacement={state.LastRegisteredLoginToken}");
-                payload = payload with { LoginToken = state.LastRegisteredLoginToken };
-            }
-            var result = string.IsNullOrWhiteSpace(payload.LoginToken)
-                ? await state.AccountService.AuthenticateMostRecentClientAsync(payload)
-                : await state.AccountService.AuthenticateClientAsync(payload);
-            await logger.LogAsync($"authenticate-set-token loginToken={payload.LoginToken} userId={result.User.Id} publicId={result.User.PublicId}");
-            await codec.WriteApiResultAsync(context, new object?[] { result.ApiToken, 0, null }, "lz4-five-frame");
-        });
+        MapAccountAuthenticationEndpoints(app, state);
 
         app.MapPost("/localap/api/Account/GetPushNotificationToken", async context =>
         {
@@ -92,26 +40,7 @@ static partial class ApiEndpointMappings
             await codec.WriteApiResultAsync(context, new object?[] { pushToken }, "direct");
         });
 
-        app.MapMethods("/localap/api/Account/GetConfirmationCode", new[] { "GET", "POST" }, async context =>
-        {
-            var code = Random.Shared.Next(100000, 999999).ToString();
-            await logger.LogAsync($"account-get-confirmation-code code={code}");
-            await codec.WriteApiResultAsync(context, new object?[] { code, 472 });
-        });
-
-        app.MapMethods("/localap/api/Account/RegisterTakeOverPassword", new[] { "GET", "POST" }, async context =>
-        {
-            var body = await codec.ReadRequestBodyAsync(context);
-            var takeoverId = Random.Shared.NextInt64(1000000000L, 9999999999L).ToString();
-            await logger.LogAsync($"account-register-takeover-password payload={ValueFormatter.Format(body)} takeoverId={takeoverId}");
-            await codec.WriteApiFramesAsync(
-                context,
-                new object?[] { true, takeoverId },
-                new object?[] { new object?[] { 120, new object?[] { Random.Shared.Next(100000, 999999) } } },
-                Array.Empty<object?>(),
-                Array.Empty<object?>(),
-                "account-register-takeover-password-five-frame");
-        });
+        MapAccountRecoveryEndpoints(app,state);
 
         app.MapMethods("/localap/api/Account/GetCurrentUserData", new[] { "GET", "POST" }, async context =>
         {
@@ -386,11 +315,6 @@ static partial class ApiEndpointMappings
                 shopCategory
             }
         };
-    }
-
-    static bool LooksLikeJwt(string value)
-    {
-        return value.Split('.').Length == 3;
     }
 
     static object?[] BuildAuthenticateResult(string apiToken, AuthenticatePayload payload, LocalConfig config)

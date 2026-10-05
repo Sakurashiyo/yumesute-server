@@ -51,7 +51,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> GetCurrentUserResultAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { GameResults.UserData()[0] };
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -61,7 +61,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> GetLoginPresentDataAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { GameResults.UserData()[0] };
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -696,6 +696,11 @@ sealed partial class UserDataService
         result.AddRange(inboxPackages.Select(value => DataObject(41, value)));
         result.AddRange(await ReadPermanentMarketDataAsync(connection,userId));
         result.AddRange((await ReadShopPurchaseStatesAsync(connection, userId)).Select(row => DataObject(108, row)));
+        await using (var recovery = new NpgsqlCommand("select exists(select 1 from user_account_recovery where \"userId\"=$1)", connection))
+        {
+            recovery.Parameters.AddWithValue(userId);
+            if (await recovery.ExecuteScalarAsync() is true) result.Add(DataObject(120,new object?[]{userId}));
+        }
         AddOfficialBootstrapData(result, userId);
         return BuildOfficialUserDataBatches(result, userId);
     }
@@ -2006,40 +2011,9 @@ sealed partial class UserDataService
         return new object?[] { reader.GetInt32(0), reader.GetString(1), reader.GetBoolean(2) };
     }
 
-    async Task<long?> FindMostRecentUserIdAsync()
-    {
-        await using var connection = await database.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand(
-            """
-            select user_accounts.id
-            from user_login_identities
-            join user_accounts on user_accounts.id = user_login_identities."userId"
-            order by user_login_identities.last_seen_at desc, user_login_identities.first_seen_at desc
-            limit 1
-            """,
-            connection);
-        var value = await command.ExecuteScalarAsync();
-        return value is long userId ? userId : null;
-    }
-
-    async Task<long?> FindLatestUserIdAsync()
-    {
-        await using var connection = await database.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand(
-            """
-            select id
-            from user_accounts
-            order by id desc
-            limit 1
-            """,
-            connection);
-        var value = await command.ExecuteScalarAsync();
-        return value is long userId ? userId : null;
-    }
-
     async Task<long?> GetCurrentUserIdAsync(HttpContext context)
     {
-        return TryReadUserIdFromRequest(context) ?? await FindMostRecentUserIdAsync();
+        return await RequireAuthenticatedUserAsync(context);
     }
 
     static async Task<string?> ReadUserNameAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId)
@@ -2065,55 +2039,6 @@ sealed partial class UserDataService
             command.Parameters.AddWithValue(value);
         }
         await command.ExecuteNonQueryAsync();
-    }
-
-    static long? TryReadUserIdFromRequest(HttpContext context)
-    {
-        var token = ReadToken(context);
-        if (string.IsNullOrWhiteSpace(token)) return null;
-
-        var parts = token.Split('.');
-        if (parts.Length != 2 && parts.Length != 3) return null;
-        var payloadPart = parts.Length == 3 ? parts[1] : parts[0];
-
-        try
-        {
-            using var doc = JsonDocument.Parse(Base64UrlDecode(payloadPart));
-            if (doc.RootElement.TryGetProperty("uid", out var uid) && uid.TryGetInt64(out var userId))
-            {
-                return userId;
-            }
-        }
-        catch
-        {
-            return null;
-        }
-
-        return null;
-    }
-
-    static string? ReadToken(HttpContext context)
-    {
-        var authorization = context.Request.Headers.Authorization.ToString();
-        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            return authorization["Bearer ".Length..].Trim();
-        }
-
-        foreach (var header in new[] { "X-Api-Token", "Api-Token", "ApiToken" })
-        {
-            var value = context.Request.Headers[header].ToString();
-            if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
-        }
-
-        return null;
-    }
-
-    static byte[] Base64UrlDecode(string value)
-    {
-        var padded = value.Replace('-', '+').Replace('_', '/');
-        padded += new string('=', (4 - padded.Length % 4) % 4);
-        return Convert.FromBase64String(padded);
     }
 
     static int? ExtractFirstInt(object? value)

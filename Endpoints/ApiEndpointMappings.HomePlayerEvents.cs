@@ -113,6 +113,7 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"home-update-notification-read-time payload={ValueFormatter.Format(body)}");
             var presentData = await state.UserDataService.UpdateNotificationReadTimeAsync(context, body);
+            await logger.LogAsync($"level=INFO operation=notification-read requestId={context.TraceIdentifier} path={context.Request.Path} outcome=success");
             await codec.WriteApiFramesAsync(
                 context,
                 new object?[] { true },
@@ -126,6 +127,7 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"home-update-notification-read-time-async payload={ValueFormatter.Format(body)}");
             var presentData = await state.UserDataService.UpdateNotificationReadTimeAsync(context, body);
+            await logger.LogAsync($"level=INFO operation=notification-read requestId={context.TraceIdentifier} path={context.Request.Path} outcome=success");
             await codec.WriteApiFramesAsync(
                 context,
                 new object?[] { true },

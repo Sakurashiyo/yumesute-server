@@ -1,7 +1,53 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 static class PayloadReaders
 {
+    public static string? ReadApiToken(HttpContext context)
+    {
+        var authorization = context.Request.Headers.Authorization.ToString();
+        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return authorization["Bearer ".Length..].Trim();
+        }
+
+        foreach (var header in new[] { "X-Api-Token", "Api-Token", "ApiToken" })
+        {
+            var value = context.Request.Headers[header].ToString();
+            if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
+        }
+
+        return null;
+    }
+
+    public static (int TabCategory, DateTime ReadAt) ReadNotificationReadPayload(object? payload)
+    {
+        object? category;
+        object? timestamp;
+        switch (payload)
+        {
+            case object?[] { Length: 2 } array:
+                category = array[0]; timestamp = array[1]; break;
+            case Dictionary<string, object?> map when map.TryGetValue("TabCategory", out category) && map.TryGetValue("ReadAt", out timestamp):
+                break;
+            case JsonElement json when json.ValueKind == JsonValueKind.Object
+                && json.TryGetProperty("TabCategory", out var tab) && tab.ValueKind == JsonValueKind.Number && tab.TryGetInt32(out var number)
+                && json.TryGetProperty("ReadAt", out var read) && read.ValueKind == JsonValueKind.String && read.TryGetDateTime(out var date):
+                category = number; timestamp = date; break;
+            case JsonElement json when json.ValueKind == JsonValueKind.Array && json.GetArrayLength() == 2
+                && json[0].ValueKind == JsonValueKind.Number && json[0].TryGetInt32(out var number) && json[1].ValueKind == JsonValueKind.String && json[1].TryGetDateTime(out var date):
+                category = number; timestamp = date; break;
+            default:
+                throw new BadHttpRequestException(NotificationErrors.InvalidReadRequest, 400);
+        }
+        if (category is not (byte or short or int or long) || Convert.ToInt64(category) is < 1 or > 3
+            || timestamp is not DateTime readAt || readAt <= DateTime.UnixEpoch)
+            throw new BadHttpRequestException(NotificationErrors.InvalidReadRequest, 400);
+        // 只解析 ReadAt 字段，避免将前面的分类编号当成 Unix 时间；不允许客户端时钟提前标记未来公告。
+        var utc = readAt.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(readAt, DateTimeKind.Utc) : readAt.ToUniversalTime();
+        var now = DateTime.UtcNow;
+        return ((int)Convert.ToInt64(category), utc > now ? now : utc);
+    }
+
     public static string? ReadRegisterName(object? value)
     {
         return value switch

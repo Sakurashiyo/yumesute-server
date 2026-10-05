@@ -4,7 +4,7 @@ sealed partial class UserDataService
 {
     public async Task<object?[]> ArrangePhotoAlbumAsync(HttpContext context, object? payload, int arrangementType)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         var values = payload as object?[] ?? Array.Empty<object?>();
         var isPublic = GetBool(values, 0) ?? true;
         var albumGroupId = GetLong(values, 1) ?? 1;

@@ -17,7 +17,11 @@
 
 `user_login_identities` 用于把登录 token hash 映射到 `"userId"`。
 
-`user_auth_sessions` 保存已签发的 API token。
+`user_auth_sessions` 保存已签发的 API token hash 及过期时间。
+
+`user_confirmation_codes` 按账号保存 nonce、有效期、消费状态和失败次数；确认码由服务端密钥派生，不存储明文。
+
+`user_account_recovery` 按账号保存唯一 10 位引继码、16 字节密码盐、32 字节 PBKDF2-SHA512 哈希、凭据签发 nonce、首次引继标记、失败次数和锁定时间。密码采用 210000 次迭代；账号删除时两张恢复表级联清理。引继使用账号行锁，在同一事务内撤销目标账号旧会话和登录凭据、登记替代凭据；失败整体回滚，重试不会影响新会话或其他账号。
 
 `user_states` 保存兼容旧逻辑用的 JSON 状态快照。
 
@@ -83,7 +87,7 @@
 
 `system_notifications` 保存面向所有玩家展示的系统公告。公告正文以客户端可读取的 JSON body 保存。
 
-`user_notification_reads` 保存每个玩家对系统公告的已读时间。
+`user_notification_reads` 保存每个玩家对系统公告的已读时间。`user_notification_states` 保存三个公告分类的阅读时间，通过 union94 同步客户端。读取 `ReadNotificationPayload` 时严格使用 key0 的分类和 key1 的时间，不将分类编号解析为 Unix 时间；非法请求为 `NOTIFICATION_INVALID_READ_REQUEST`（400）。分类和单条记录均采用单调更新，延迟请求不能回退已读时间，每日刷新不会清除状态；尚未发布或在阅读时间之后更新的公告不会被提前标记。此前错误保存为 1970 年的记录，启用修复版后重新阅读即可更新，不推测补写玩家未确认的阅读状态。
 
 ## 其他系统表
 

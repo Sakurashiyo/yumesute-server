@@ -5,7 +5,7 @@ sealed partial class UserDataService
 {
     public async Task<LoginBonusReceiveResult> CheckReceiveLoginBonusAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new LoginBonusReceiveResult(Array.Empty<object?>(), Array.Empty<object?>());
 
         await EnsureDefaultUserDataAsync(userId.Value);

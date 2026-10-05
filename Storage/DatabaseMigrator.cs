@@ -1,4 +1,4 @@
-﻿using Npgsql;
+using Npgsql;
 
 using NpgsqlTypes;
 using System.Text.Json;
@@ -197,6 +197,7 @@ static class DatabaseMigrator
         await CircleSchema.MigrateAsync(connection);
         await CharacterMissionSchema.MigrateAsync(connection);
         await AnotherNotationSchema.MigrateAsync(connection);
+        await AccountRecoverySchema.MigrateAsync(connection);
         await MigrateCharacterSenseLevelsAsync(connection);
         await MigrateActorPortalAsync(connection);
         if (config is not null)

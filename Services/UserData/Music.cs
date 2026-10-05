@@ -4,7 +4,7 @@ sealed partial class UserDataService
 {
     public async Task<object?[]> EditMusicBookmarkAsync(HttpContext context, object? payload)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return Array.Empty<object?>();
 
         var values = payload as object?[] ?? Array.Empty<object?>();

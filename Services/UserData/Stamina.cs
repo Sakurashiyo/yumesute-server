@@ -4,7 +4,7 @@ sealed partial class UserDataService
 {
     public async Task<object?[]> UseStaminaRecoveryItemsAsync(HttpContext context, object? payload)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return Array.Empty<object?>();
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -61,7 +61,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> RecoverStaminaByJewelAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return Array.Empty<object?>();
 
         await EnsureDefaultUserDataAsync(userId.Value);

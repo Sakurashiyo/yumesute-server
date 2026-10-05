@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 sealed class ApiCodec
 {
@@ -11,7 +11,10 @@ sealed class ApiCodec
         this.logger = logger;
     }
 
-    static bool IsBirthDateRequest(HttpContext context) => context.Request.Path.Value?.Contains("UpdateBirthDate", StringComparison.OrdinalIgnoreCase) == true;
+    static bool IsPrivateRequest(HttpContext context) =>
+        context.Request.Path.Value?.Contains("UpdateBirthDate", StringComparison.OrdinalIgnoreCase) == true
+        || context.Request.Path.StartsWithSegments("/localap/api/Account")
+        || context.Request.Path.StartsWithSegments("/api/Account");
 
     public async Task<object?> ReadRequestBodyAsync(HttpContext context)
     {
@@ -27,7 +30,7 @@ sealed class ApiCodec
         await context.Request.Body.CopyToAsync(ms);
         var bytes = ms.ToArray();
         await logger.LogAsync($"body length={bytes.Length} path={context.Request.Path}");
-        if (bytes.Length > 0 && !IsBirthDateRequest(context))
+        if (bytes.Length > 0 && !IsPrivateRequest(context))
         {
             await logger.LogAsync($"body raw path={context.Request.Path} hex={Bytes.ToHex(bytes, 256)}");
         }
@@ -40,13 +43,24 @@ sealed class ApiCodec
         if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
         {
             var json = JsonSerializer.Deserialize<object>(bytes);
-            if (!IsBirthDateRequest(context)) await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(json)}");
+            if (!IsPrivateRequest(context)) await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(json)}");
             return json;
         }
 
         var decoded = MagicOnionLz4.Unwrap(MsgPack.Decode(bytes));
-        if (!IsBirthDateRequest(context)) await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(decoded)}");
+        if (!IsPrivateRequest(context)) await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(decoded)}");
         return decoded;
+    }
+
+    public async Task WriteApiErrorAsync(HttpContext context, string errorCode, int statusCode)
+    {
+        SetCommonHeaders(context);
+        context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "application/vnd.msgpack";
+        var payload = Bytes.Concat(MsgPack.Encode(new object?[] { errorCode }), MsgPack.Encode(null),
+            MsgPack.Encode(Array.Empty<object?>()), MsgPack.Encode(Array.Empty<object?>()), MsgPack.Encode(Array.Empty<object?>()));
+        context.Response.ContentLength = payload.Length;
+        await context.Response.Body.WriteAsync(payload);
     }
 
     public async Task WriteApiResultAsync(HttpContext context, object? result, string? responseMode = null)
@@ -74,7 +88,10 @@ sealed class ApiCodec
         };
 
         context.Response.Headers.ContentLength = payload.Length;
-        await logger.LogAsync($"response mode={mode} bytes={payload.Length} prefix={Bytes.ToHex(payload, 48)} path={context.Request.Path} result={ValueFormatter.Format(result)}");
+        if (IsPrivateRequest(context))
+            await logger.LogAsync($"response mode={mode} bytes={payload.Length} path={context.Request.Path}");
+        else
+            await logger.LogAsync($"response mode={mode} bytes={payload.Length} prefix={Bytes.ToHex(payload, 48)} path={context.Request.Path} result={ValueFormatter.Format(result)}");
         await context.Response.Body.WriteAsync(payload);
     }
 
@@ -141,7 +158,7 @@ sealed class ApiCodec
         };
 
         context.Response.Headers.ContentLength = payload.Length;
-        if (IsBirthDateRequest(context))
+        if (IsPrivateRequest(context))
             await logger.LogAsync($"response mode={responseMode} bytes={payload.Length} path={context.Request.Path}");
         else
         await logger.LogAsync($"response mode={responseMode} bytes={payload.Length} prefix={Bytes.ToHex(payload, 48)} path={context.Request.Path} result={ValueFormatter.Format(result)} present={ValueFormatter.Format(present)}");

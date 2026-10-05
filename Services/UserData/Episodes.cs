@@ -1,10 +1,10 @@
-﻿using Npgsql;
+using Npgsql;
 
 sealed partial class UserDataService
 {
     public async Task<object?[]> ReleaseSideStoryAsync(HttpContext context, long characterMasterId, int order)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return Array.Empty<object?>();
 
         await EnsureDefaultUserDataAsync(userId.Value);

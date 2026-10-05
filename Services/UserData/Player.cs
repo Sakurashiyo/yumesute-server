@@ -6,7 +6,7 @@ sealed partial class UserDataService
     const string ProfileFavoriteCharacterInvalid = "PROFILE_FAVORITE_CHARACTER_INVALID";
     public async Task<object?[]> GetCurrentUserProfileDetailAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return BuildUserProfileDetail(null, "LocalPlayer", DefaultCharacterMasterId, 1, false, DefaultIconFrameMasterId, DefaultNameColorMasterId, DefaultNameBaseColorMasterId, null);
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -15,7 +15,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> EditProfileAsync(HttpContext context, object? payload)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || payload is not object?[] rawValues) return Array.Empty<object?>();
         var values = rawValues is [object?[] nestedValues] ? nestedValues : rawValues;
 
@@ -84,7 +84,7 @@ sealed partial class UserDataService
 
     public async Task<string> GetCurrentUserPushTokenAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return "100000";
 
         await using var connection = await database.OpenConnectionAsync();
@@ -131,12 +131,7 @@ sealed partial class UserDataService
         var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return Array.Empty<object?>();
 
-        var tabCategory = ExtractFirstInt(payload);
-        var readAt = ExtractFirstDateTime(payload) ?? DateTime.UtcNow;
-        if (tabCategory is not (>= 1 and <= 3))
-        {
-            tabCategory = 1;
-        }
+        var (tabCategory, readAt) = PayloadReaders.ReadNotificationReadPayload(payload);
 
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
@@ -160,15 +155,15 @@ sealed partial class UserDataService
             on conflict ("userId")
             do update set
               notification_read_at = case
-                when $3 = 1 then excluded.notification_read_at
+                when $3 = 1 then greatest(user_notification_states.notification_read_at, excluded.notification_read_at)
                 else user_notification_states.notification_read_at
               end,
               notice_read_at = case
-                when $3 = 2 then excluded.notice_read_at
+                when $3 = 2 then greatest(user_notification_states.notice_read_at, excluded.notice_read_at)
                 else user_notification_states.notice_read_at
               end,
               present_read_at = case
-                when $3 = 3 then excluded.present_read_at
+                when $3 = 3 then greatest(user_notification_states.present_read_at, excluded.present_read_at)
                 else user_notification_states.present_read_at
               end,
               updated_at = now()
@@ -178,35 +173,27 @@ sealed partial class UserDataService
         {
             command.Parameters.AddWithValue(userId.Value);
             command.Parameters.AddWithValue(readAt);
-            command.Parameters.AddWithValue(tabCategory.Value);
+            command.Parameters.AddWithValue(tabCategory);
             await command.ExecuteNonQueryAsync();
         }
 
         await using (var command = new NpgsqlCommand(
-            tabCategory is >= 1 and <= 3
-                ? """
-                  insert into user_notification_reads ("userId", notification_id, read_at)
-                  select $1, id, $2
-                  from system_notifications
-                  where notification_tab_category = $3
-                    and posting_at <= $2
-                  on conflict ("userId", notification_id)
-                  do update set read_at = excluded.read_at
-                  """
-                : """
-                  insert into user_notification_reads ("userId", notification_id, read_at)
-                  select $1, id, $2
-                  from system_notifications
-                  where posting_at <= $2
-                  on conflict ("userId", notification_id)
-                  do update set read_at = excluded.read_at
-                  """,
+            """
+            insert into user_notification_reads ("userId", notification_id, read_at)
+            select $1, id, $2
+            from system_notifications
+            where notification_tab_category = $3
+              and greatest(posting_at, last_updated_at) <= $2
+              and starts_at <= now() and (ends_at is null or ends_at > now())
+            on conflict ("userId", notification_id)
+            do update set read_at = greatest(user_notification_reads.read_at, excluded.read_at)
+            """,
             connection,
             transaction))
         {
             command.Parameters.AddWithValue(userId.Value);
             command.Parameters.AddWithValue(readAt);
-            if (tabCategory is >= 1 and <= 3) command.Parameters.AddWithValue(tabCategory.Value);
+            command.Parameters.AddWithValue(tabCategory);
             await command.ExecuteNonQueryAsync();
         }
 
@@ -275,7 +262,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> GetStoryEventCampInfoAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         var publicId = userId is null ? "0000000000" : await ReadPublicIdAsync(userId.Value);
         var rawRanking = new object?[] { 0, 0, publicId, 0 };
         return new object?[] { rawRanking, 0L, 0L };
@@ -317,7 +304,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> UpdateHomeDisplayPreferenceAsync(HttpContext context, object? payload)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { 0, 101, null, 101, 101, 101, 11, null, 11, 11, 11, DefaultCharacterMasterId, false, 0, 101, 11 };
         if (payload is not object?[] values || values.Length < 15)
         {

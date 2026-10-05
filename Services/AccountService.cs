@@ -1,6 +1,6 @@
-﻿using Npgsql;
+using Npgsql;
 
-sealed class AccountService
+sealed partial class AccountService
 {
     readonly LocalConfig config;
     readonly PostgresDatabase database;
@@ -23,7 +23,6 @@ sealed class AccountService
             var user = await InsertUserWithRandomPublicIdAsync(connection, transaction, name, passwordHash);
             await InsertDefaultStateAsync(connection, transaction, user.Id, user.PublicId, name);
             await UserDataService.InsertDefaultUserDataAsync(connection, transaction, user.Id, name);
-            await ClearLocalLoginIdentitiesAsync(connection, transaction);
             await InsertLocalLoginIdentityAsync(connection, transaction, CryptoService.Sha256(loginToken), user.Id, "GooglePlay", "", "", config.ApplicationVersion);
             await transaction.CommitAsync();
             return new RegisterGameAccountResult(loginToken, user);
@@ -39,7 +38,7 @@ sealed class AccountService
     {
         if (string.IsNullOrWhiteSpace(payload.LoginToken))
         {
-            throw new InvalidOperationException("missing LoginToken");
+            throw new BadHttpRequestException(AccountErrors.InvalidLoginToken, StatusCodes.Status401Unauthorized);
         }
 
         var loginTokenHash = CryptoService.Sha256(payload.LoginToken);
@@ -48,78 +47,14 @@ sealed class AccountService
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
-            var user = await FindUserByLoginTokenHashAsync(connection, transaction, loginTokenHash);
-            if (user is null)
-            {
-                user = await FindMostRecentLocalUserAsync(connection, transaction);
-                if (user is null)
-                {
-                    var name = $"Player-{CryptoService.RandomNumericCode()}";
-                    var passwordHash = CryptoService.Sha256(CryptoService.RandomToken());
-
-                    user = await InsertUserWithRandomPublicIdAsync(connection, transaction, name, passwordHash);
-                    await InsertDefaultStateAsync(connection, transaction, user.Id, user.PublicId, name);
-                    await UserDataService.InsertDefaultUserDataAsync(connection, transaction, user.Id, name);
-                }
-
-                await InsertLocalLoginIdentityAsync(connection, transaction, loginTokenHash, user.Id, payload.GameVersion, payload.ApkHash, payload.ApkApplicationSignature, payload.ApplicationVersion);
-            }
-            else
-            {
-                await UpdateLocalLoginIdentityAsync(connection, transaction, loginTokenHash, payload);
-            }
+            var user = await FindUserByLoginTokenHashAsync(connection, transaction, loginTokenHash)
+                ?? throw new BadHttpRequestException(AccountErrors.InvalidLoginToken, StatusCodes.Status401Unauthorized);
+            await UpdateLocalLoginIdentityAsync(connection, transaction, loginTokenHash, payload);
 
             var apiToken = CryptoService.SignToken(
                 new Dictionary<string, object?>
                 {
-                    ["uid"] = user.Id,
-                    ["numericId"] = user.NumericId,
-                    ["publicId"] = user.PublicId,
-                    ["lc"] = "1",
-                    ["pf"] = payload.GameVersion,
-                    ["gv"] = payload.GameVersion,
-                    ["ld"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm:ss")
-                },
-                config.TokenSecret,
-                60 * 60 * 24 * 30);
-
-            await InsertAuthSessionAsync(connection, transaction, user.Id, CryptoService.Sha256(apiToken));
-            await transaction.CommitAsync();
-            return new AuthResult(apiToken, user);
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
-    }
-
-    public async Task<AuthResult> AuthenticateMostRecentClientAsync(AuthenticatePayload payload)
-    {
-        await using var connection = await database.OpenConnectionAsync();
-        await using var transaction = await connection.BeginTransactionAsync();
-        try
-        {
-            var user = await FindMostRecentLocalUserAsync(connection, transaction);
-            if (user is null)
-            {
-                var loginTokenHash = CryptoService.Sha256("local-missing-login-token");
-                var name = $"Player-{CryptoService.RandomNumericCode()}";
-                var passwordHash = CryptoService.Sha256(CryptoService.RandomToken());
-
-                user = await InsertUserWithRandomPublicIdAsync(connection, transaction, name, passwordHash);
-                await InsertDefaultStateAsync(connection, transaction, user.Id, user.PublicId, name);
-                await UserDataService.InsertDefaultUserDataAsync(connection, transaction, user.Id, name);
-                await InsertLocalLoginIdentityAsync(connection, transaction, loginTokenHash, user.Id, payload.GameVersion, payload.ApkHash, payload.ApkApplicationSignature, payload.ApplicationVersion);
-            }
-            else
-            {
-                await TouchMostRecentLocalLoginIdentityAsync(connection, transaction, user.Id);
-            }
-
-            var apiToken = CryptoService.SignToken(
-                new Dictionary<string, object?>
-                {
+                    ["jti"] = CryptoService.RandomToken(24),
                     ["uid"] = user.Id,
                     ["numericId"] = user.NumericId,
                     ["publicId"] = user.PublicId,
@@ -228,14 +163,16 @@ sealed class AccountService
         await command.ExecuteNonQueryAsync();
     }
 
-    static async Task ClearLocalLoginIdentitiesAsync(NpgsqlConnection connection, NpgsqlTransaction transaction)
-    {
-        await using var command = new NpgsqlCommand("delete from user_login_identities", connection, transaction);
-        await command.ExecuteNonQueryAsync();
-    }
-
     static async Task<AuthUser?> FindUserByLoginTokenHashAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string loginTokenHash)
     {
+        // 与引继/密码设置保持账号行优先的锁顺序，并在锁后重新查询凭据。
+        await using (var owner = new NpgsqlCommand("select \"userId\" from user_login_identities where login_token_hash=$1", connection, transaction))
+        {
+            owner.Parameters.AddWithValue(loginTokenHash);
+            if (await owner.ExecuteScalarAsync() is not long userId) return null;
+            await LockAccountAsync(connection, transaction, userId);
+        }
+
         await using var command = new NpgsqlCommand(
             """
             select user_accounts.id, user_accounts.numeric_id, user_accounts.public_id, user_accounts.name, user_accounts.role
@@ -250,37 +187,6 @@ sealed class AccountService
 
         await using var reader = await command.ExecuteReaderAsync();
         return await reader.ReadAsync() ? ReadAuthUser(reader) : null;
-    }
-
-    static async Task<AuthUser?> FindMostRecentLocalUserAsync(NpgsqlConnection connection, NpgsqlTransaction transaction)
-    {
-        await using var command = new NpgsqlCommand(
-            """
-            select user_accounts.id, user_accounts.numeric_id, user_accounts.public_id, user_accounts.name, user_accounts.role
-            from user_login_identities
-            join user_accounts on user_accounts.id = user_login_identities."userId"
-            order by user_login_identities.last_seen_at desc, user_login_identities.first_seen_at desc
-            limit 1
-            """,
-            connection,
-            transaction);
-
-        await using var reader = await command.ExecuteReaderAsync();
-        return await reader.ReadAsync() ? ReadAuthUser(reader) : null;
-    }
-
-    static async Task TouchMostRecentLocalLoginIdentityAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId)
-    {
-        await using var command = new NpgsqlCommand(
-            """
-            update user_login_identities
-            set last_seen_at = now()
-            where "userId" = $1
-            """,
-            connection,
-            transaction);
-        command.Parameters.AddWithValue(userId);
-        await command.ExecuteNonQueryAsync();
     }
 
     static async Task UpdateLocalLoginIdentityAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string loginTokenHash, AuthenticatePayload payload)

@@ -19,7 +19,7 @@ sealed partial class UserDataService
             return new DugongRunClearResult(Array.Empty<object?>(), Array.Empty<object?>());
         }
 
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null)
         {
             return BuildFallbackDugongRunClearResult(dugongRunCourseMasterId, clearType);

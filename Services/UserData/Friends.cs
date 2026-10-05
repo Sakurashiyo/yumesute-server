@@ -5,7 +5,7 @@ sealed partial class UserDataService
 {
     public async Task<object?[]> GetFriendListResultAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { Array.Empty<object?>(), 0 };
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -40,7 +40,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> GetBlockListResultAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { Array.Empty<object?>() };
 
         await using var connection = await database.OpenConnectionAsync();
@@ -87,7 +87,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> GetOutgoingFriendRequestsAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { Array.Empty<object?>(), 0 };
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -116,7 +116,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> GetIncomingFriendRequestsAsync(HttpContext context)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { Array.Empty<object?>(), 0 };
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -145,7 +145,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> SendFriendRequestAsync(HttpContext context, string? targetUserId)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || string.IsNullOrWhiteSpace(targetUserId)) return new object?[] { 3 };
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -206,7 +206,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> CancelFriendRequestAsync(HttpContext context, string? targetUserId)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || string.IsNullOrWhiteSpace(targetUserId)) return new object?[] { true };
 
         await using var connection = await database.OpenConnectionAsync();
@@ -232,7 +232,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> AcceptFriendRequestAsync(HttpContext context, string? fromUserId)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || string.IsNullOrWhiteSpace(fromUserId)) return new object?[] { 3 };
 
         await EnsureDefaultUserDataAsync(userId.Value);
@@ -272,7 +272,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> DenyFriendRequestAsync(HttpContext context, string? fromUserId)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || string.IsNullOrWhiteSpace(fromUserId)) return new object?[] { true };
 
         await using var connection = await database.OpenConnectionAsync();
@@ -298,7 +298,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> RemoveFriendAsync(HttpContext context, string? targetUserId)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || string.IsNullOrWhiteSpace(targetUserId)) return new object?[] { true };
 
         await using var connection = await database.OpenConnectionAsync();
@@ -311,7 +311,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> BlockFriendUserAsync(HttpContext context, string? targetUserId)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || string.IsNullOrWhiteSpace(targetUserId)) return new object?[] { true };
 
         await using var connection = await database.OpenConnectionAsync();
@@ -359,7 +359,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> RemoveBlockFriendUserAsync(HttpContext context, string? targetUserId)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null || string.IsNullOrWhiteSpace(targetUserId)) return new object?[] { true };
 
         await using var connection = await database.OpenConnectionAsync();
@@ -381,7 +381,7 @@ sealed partial class UserDataService
 
     public async Task<object?[]> SetFriendFavoriteAsync(HttpContext context, object? payload)
     {
-        var userId = await GetCurrentUserIdAsync(context) ?? await FindLatestUserIdAsync();
+        var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { true };
 
         var values = payload as object?[];
