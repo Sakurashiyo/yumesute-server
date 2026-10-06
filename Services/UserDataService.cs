@@ -574,6 +574,7 @@ sealed partial class UserDataService
             var name = await ReadUserNameAsync(connection, transaction, userId) ?? "LocalPlayer";
             await InsertDefaultUserDataAsync(connection, transaction, userId, name);
             await NormalizeRankAsync(connection, transaction, userId);
+            await NormalizeCharacterGrowthAsync(connection, transaction, userId);
             await SynchronizeMusicUnlocksAsync(connection, transaction, userId);
             await transaction.CommitAsync();
         }
@@ -641,7 +642,6 @@ sealed partial class UserDataService
         var inboxPackages = await ReadInboxPackagesAsync(connection, userId);
         var characterResourceProgress = await ReadCharacterMissionsAsync(connection, userId);
         var missions = await ReadMissionsAsync(connection, userId);
-        var liveUserStats = await ReadLiveUserStatsAsync(connection, userId);
         var musicBookmarks = await ReadMusicBookmarksAsync(connection, userId);
         var gameHintReads = await ReadGameHintReadsAsync(connection, userId);
         var shopLastViews = await ReadShopLastViewsAsync(connection, userId);
@@ -658,6 +658,7 @@ sealed partial class UserDataService
 
         var result = new List<object?>
         {
+            await ReadGrowthBonusAsync(connection, userId),
             DataObject(0, user),
             DataObject(1, profile),
             DataObject(2, userPreference),
@@ -679,7 +680,6 @@ sealed partial class UserDataService
         result.Add(DataObject(94, notification));
         result.Add(DataObject(97, playerSetting));
         result.AddRange(missions.Select(value => DataObject(48, value)));
-        result.Add(DataObject(67, liveUserStats));
         result.Add(DataObject(109, dailyLimit));
         result.Add(DataObject(128, currency));
         result.AddRange(musicBookmarks.Select(value => DataObject(146, value)));
@@ -944,7 +944,6 @@ sealed partial class UserDataService
             if (characterAliases.TryGetValue(Convert.ToInt64(slot[3]), out var actualId)) slot[3] = actualId;
         }
 
-        AddIfMissing(67, new object?[] { userId, 0.0, 0.0 });
         AddIfMissing(97, BuildInitialPlayerSetting(userId));
         AddIfMissing(109, new object?[] { UserScopedId(userId, 10902), 0, 0, CurrentDailyResetBoundaryUtc(DateTimeOffset.UtcNow).UtcDateTime, 0 });
         AddIfMissing(148, new object?[] { userId, null, true });
@@ -1810,22 +1809,6 @@ sealed partial class UserDataService
             });
         }
         return result;
-    }
-
-    static async Task<object?[]> ReadLiveUserStatsAsync(NpgsqlConnection connection, long userId)
-    {
-        await using var command = new NpgsqlCommand(
-            """
-            select score_rating, technical_rating
-            from user_live_user_stats
-            where "userId" = $1
-            """,
-            connection);
-        command.Parameters.AddWithValue(userId);
-
-        await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync()) return new object?[] { userId, 0.0, 0.0 };
-        return new object?[] { userId, reader.GetDouble(0), reader.GetDouble(1) };
     }
 
     static async Task<List<object?[]>> ReadMusicBookmarksAsync(NpgsqlConnection connection, long userId)

@@ -9,6 +9,8 @@ sealed class LocalServerState
         UserDataService = new UserDataService(Database);
         MasterDataService = new MasterDataService(config, Database);
         MultiLiveRealtime = new MultiLiveRealtimeService(Logger);
+        SocialRealtime = new SocialRealtimeService(Database, MultiLiveRealtime);
+        UserDataService.FriendRequestCreated = SocialRealtime.NotifyFriendRequestAsync;
         Codec = new ApiCodec(config, Logger);
         Assets = new LocalAssetResolver(config, Logger);
     }
@@ -20,6 +22,7 @@ sealed class LocalServerState
     public MasterDataService MasterDataService { get; }
     public MultiLiveRealtimeService MultiLiveRealtime { get; }
     public LocalRequestLogger Logger { get; }
+    public SocialRealtimeService SocialRealtime { get; }
     public ApiCodec Codec { get; }
     public LocalAssetResolver Assets { get; }
 

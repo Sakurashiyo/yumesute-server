@@ -235,6 +235,13 @@ static partial class ApiEndpointMappings
                 "characters-add-experience-present-lz4-five-frame");
         });
 
+        app.MapPost("/localap/api/Characters/{characterId:long}/Awaken", async (HttpContext context, long characterId) =>
+        {
+            var present = await state.UserDataService.AwakenCharacterAsync(context, characterId);
+            await codec.WriteApiFramesAsync(context, new object?[] { true }, present,
+                Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
+        });
+
         app.MapPost("/localap/api/Characters/{characterId:long}/EnhanceSenseLevel/{senseLevel:int}", async (HttpContext context, long characterId, int senseLevel) =>
         {
             var priority = 1;

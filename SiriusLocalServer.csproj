@@ -7,6 +7,9 @@
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
+    <EmbeddedResource Include="masterdata-export/tables/StampMaster.json" LogicalName="Realtime.StampMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/NgWordMaster.json" LogicalName="Realtime.NgWordMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterAwakeningItemGroupMaster.json" LogicalName="Progression.CharacterAwakeningItemGroupMaster.json" />
   </ItemGroup>
   <ItemGroup>
     <None Update=".env">
@@ -47,5 +50,6 @@
     <EmbeddedResource Include="AdminWeb/*" LogicalName="AdminWeb.%(Filename)%(Extension)" />
     <Content Include="../admin-icons/**/*.png" Link="AdminIcons/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="masterdata-export/tables/GachaMaster.json" LogicalName="Gacha.GachaMaster.json" />
+
   </ItemGroup>
 </Project>

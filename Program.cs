@@ -14,7 +14,8 @@ builder.WebHost.ConfigureKestrel(options =>
     var address = config.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
         ? System.Net.IPAddress.Loopback : System.Net.IPAddress.Parse(config.Host);
     options.Listen(address, config.Port, listener => listener.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1);
-    options.Listen(address, config.RealtimePort, listener => listener.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2);
+    options.Listen(address, config.RealtimePort, listener =>
+        listener.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2);
 });
 builder.Services.AddSingleton(state);
 builder.Services.AddGrpc(options => options.MaxReceiveMessageSize = 64 * 1024);

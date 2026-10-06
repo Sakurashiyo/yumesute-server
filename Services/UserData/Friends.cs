@@ -3,6 +3,8 @@ using Npgsql;
 
 sealed partial class UserDataService
 {
+    internal Func<long, long, Task>? FriendRequestCreated { get; set; }
+
     public async Task<object?[]> GetFriendListResultAsync(HttpContext context)
     {
         var userId = await GetCurrentUserIdAsync(context);
@@ -156,6 +158,7 @@ sealed partial class UserDataService
         if (await AreUsersBlockedAsync(connection, userId.Value, targetInternalUserId.Value)) return new object?[] { 3 };
         if (await AreUsersFriendsAsync(connection, userId.Value, targetInternalUserId.Value)) return new object?[] { 2 };
 
+        var requestCreated = false;
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
@@ -180,7 +183,7 @@ sealed partial class UserDataService
             }
             else
             {
-                await ExecuteNonQueryAsync(
+                requestCreated = await ExecuteNonQueryAsync(
                     connection,
                     transaction,
                     """
@@ -190,7 +193,7 @@ sealed partial class UserDataService
                     do nothing
                     """,
                     userId.Value,
-                    targetInternalUserId.Value);
+                    targetInternalUserId.Value) > 0;
             }
 
             await transaction.CommitAsync();
@@ -201,6 +204,8 @@ sealed partial class UserDataService
             throw;
         }
 
+        if (requestCreated && FriendRequestCreated is not null)
+            await FriendRequestCreated(userId.Value, targetInternalUserId.Value);
         return new object?[] { 1 };
     }
 

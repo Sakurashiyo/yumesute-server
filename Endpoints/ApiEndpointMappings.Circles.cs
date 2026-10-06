@@ -8,6 +8,7 @@ static partial class ApiEndpointMappings
         app.MapPost("/localap/api/Circles/Join", async context =>
         {
             var joined = await state.UserDataService.JoinCircleAsync(context, context.Request.Query["circleId"].ToString());
+            await state.SocialRealtime.PublishActivitiesAsync();
             await codec.WriteApiFramesAsync(context, joined.Result, joined.Present, Array.Empty<object?>(),
                 Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
@@ -15,6 +16,7 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var created = await state.UserDataService.CreateCircleAsync(context, body);
+            await state.SocialRealtime.PublishActivitiesAsync();
             await codec.WriteApiFramesAsync(context, created.Result, created.Present, Array.Empty<object?>(),
                 Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });

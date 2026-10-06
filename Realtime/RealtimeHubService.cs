@@ -17,56 +17,10 @@ sealed partial class RealtimeHubService(LocalServerState state)
             await RunMultiLiveStreamAsync(authenticated.Identity, requests, responses, call, logger);
             return;
         }
-        var joined = false;
-        try
-        {
-            while (await requests.MoveNext(call.CancellationToken))
-            {
-                var request = RealtimeHubProtocol.ReadRequest(requests.Current);
-                if (request.MethodId == RealtimeHubProtocol.MethodId("JoinAsync"))
-                {
-                    if (!joined)
-                    {
-                        joined = true;
-                        await responses.WriteAsync(RealtimeHubProtocol.Broadcast("OnJoin", null));
-                        logger.LogInformation("实时加入完成 hub={Hub} userId={UserId}", hub, userId);
-                    }
-                    if (request.MessageId >= 0)
-                        await responses.WriteAsync(RealtimeHubProtocol.Response(request.MessageId, request.MethodId, null));
-                    continue;
-                }
-                if (!joined)
-                {
-                    if (request.MessageId >= 0)
-                        await responses.WriteAsync(RealtimeHubProtocol.Error(request.MessageId, StatusCode.FailedPrecondition, RealtimeHubProtocol.NotJoined));
-                    continue;
-                }
-                var supportedQuery = hub == "ICommonHub"
-                    ? request.MethodId == RealtimeHubProtocol.MethodId("GetMultiLiveInvitationsFromFriendAsync")
-                    : request.MethodId == RealtimeHubProtocol.MethodId("GetChatsAsync") || request.MethodId == RealtimeHubProtocol.MethodId("GetActivityLogsAsync");
-                if (request.MessageId >= 0)
-                {
-                    // 本地实时兼容阶段没有存储聊天或邀请；未支持的写入必须明确失败。
-                    await responses.WriteAsync(supportedQuery
-                        ? RealtimeHubProtocol.Response(request.MessageId, request.MethodId, Array.Empty<object?>())
-                        : RealtimeHubProtocol.Error(request.MessageId, StatusCode.Unimplemented, RealtimeHubProtocol.MethodUnimplemented));
-                }
-                if (!supportedQuery)
-                    logger.LogWarning("实时方法未实现 hub={Hub} methodId={MethodId} userId={UserId}", hub, request.MethodId, userId);
-            }
-        }
-        catch (OperationCanceledException) when (call.CancellationToken.IsCancellationRequested)
-        {
-            // 客户端退出或切换场景会取消连接，这是连接生命周期的一部分。
-            logger.LogDebug("实时连接取消 hub={Hub} userId={UserId}", hub, userId);
-        }
-        finally
-        {
-            logger.LogInformation("实时连接关闭 hub={Hub} userId={UserId}", hub, userId);
-        }
+        await RunSocialStreamAsync(userId, authenticated.Identity, authenticated.SessionId, hub, requests, responses, call, logger);
     }
 
-    async Task<(long UserId, string Identity)> AuthenticateAsync(ServerCallContext call)
+    async Task<(long UserId, string Identity, long SessionId)> AuthenticateAsync(ServerCallContext call)
     {
         var headers = call.GetHttpContext().Request.Headers;
         var token = headers.Authorization.ToString();
@@ -82,13 +36,13 @@ sealed partial class RealtimeHubService(LocalServerState state)
         if (string.IsNullOrEmpty(token)) throw new RpcException(new Status(StatusCode.Unauthenticated, RealtimeHubProtocol.AuthRequired));
         await using var connection = await state.Database.OpenConnectionAsync(call.CancellationToken);
         await using var command = new NpgsqlCommand("""
-            select s."userId", a.public_id from user_auth_sessions s join user_accounts a on a.id=s."userId"
+            select s."userId", a.public_id, s.id from user_auth_sessions s join user_accounts a on a.id=s."userId"
             where s.token_hash=$1 and s.expires_at>now() order by s.id desc limit 1
             """, connection);
         command.Parameters.AddWithValue(CryptoService.Sha256(token));
         await using var reader = await command.ExecuteReaderAsync(call.CancellationToken);
         if (!await reader.ReadAsync(call.CancellationToken)) throw new RpcException(new Status(StatusCode.Unauthenticated, RealtimeHubProtocol.AuthInvalid));
         // 与 HTTP 用户数据中的 public_id 一致，身份不能由客户端的加入参数指定。
-        return (reader.GetInt64(0), reader.GetString(1));
+        return (reader.GetInt64(0), reader.GetString(1), reader.GetInt64(2));
     }
 }

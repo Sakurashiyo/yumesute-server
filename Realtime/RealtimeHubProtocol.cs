@@ -5,6 +5,10 @@ using System.Buffers.Binary;
 static class RealtimeHubProtocol
 {
     public const string InvalidFrame = "REALTIME_INVALID_FRAME";
+    public const string CirclePermissionDenied = "REALTIME_CIRCLE_PERMISSION_DENIED";
+    public const string InvitePermissionDenied = "REALTIME_INVITE_PERMISSION_DENIED";
+    public const string InviteRoomUnavailable = "REALTIME_INVITE_ROOM_UNAVAILABLE";
+    public const string InviteTooFrequent = "REALTIME_INVITE_TOO_FREQUENT";
     public const string NotJoined = "REALTIME_NOT_JOINED";
     public const string MethodUnimplemented = "REALTIME_METHOD_UNIMPLEMENTED";
     public const string AuthRequired = "REALTIME_AUTH_REQUIRED";
@@ -29,7 +33,7 @@ static class RealtimeHubProtocol
             var methodId = ReadNumber(payload, ref offset);
             if (offset >= payload.Length || (hasResponse && messageId < 0))
                 throw new FormatException("缺少参数或请求编号不合法");
-            var parameterless = methodId == MethodId("JoinAsync") || methodId == MethodId("GetMultiLiveInvitationsFromFriendAsync") || methodId == MethodId("GetActivityLogsAsync");
+            var parameterless = methodId == MethodId("JoinAsync") || methodId == MethodId("GetMultiLiveInvitationsFromFriendAsync") || methodId == MethodId("GetActivityLogsAsync") || methodId == MethodId("GetReadChatAsync");
             if (parameterless && (offset != payload.Length - 1 || payload[offset] != 0xc0))
                 throw new FormatException("无参方法必须使用 nil 参数");
             return (messageId, methodId);

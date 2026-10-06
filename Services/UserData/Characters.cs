@@ -91,19 +91,35 @@ sealed partial class UserDataService
         await using var transaction = await connection.BeginTransactionAsync();
 
         var character = await ReadCharacterForUpdateAsync(connection, transaction, userId, characterId);
+        decimal bonus;
+        await using (var readBonus = new NpgsqlCommand("select experience_bonus from user_growth_bonuses where \"userId\"=$1 for update", connection, transaction))
+        {
+            readBonus.Parameters.AddWithValue(userId);
+            bonus = (decimal)(await readBonus.ExecuteScalarAsync() ?? throw new InvalidOperationException("账号经验加成缺失"));
+        }
+        var growth = CharacterProgressionRules.UseItems(consumedItems.Select(i => (i.ItemMasterId, i.Quantity)), bonus,
+            CharacterProgressionRules.Remaining(character.MasterId, character.Level, character.Experience));
         var updatedItems = new List<ExperienceItemRequest>();
-        foreach (var (itemMasterId, quantity, _) in consumedItems)
+        foreach (var (itemMasterId, quantity, _) in consumedItems.OrderBy(i => i.ItemMasterId))
         {
             var remaining = await ConsumeExperienceItemAsync(connection, transaction, userId, itemMasterId, quantity);
             updatedItems.Add(new ExperienceItemRequest(itemMasterId, quantity, remaining));
         }
 
-        var gainedExperience = updatedItems.Sum(item => checked(CharacterExperienceValue(item.ItemMasterId) * item.Quantity));
-        var next = CharacterProgressionRules.ApplyExperience(character.Level, character.Experience, gainedExperience);
+        var next = CharacterProgressionRules.ApplyExperience(character.Level, character.Experience, growth.Gain, character.MasterId);
         var updatedCharacter = await UpdateCharacterExperienceAsync(connection, transaction, userId, characterId, next);
+        await using (var updateBonus = new NpgsqlCommand("update user_growth_bonuses set experience_bonus=$2 where \"userId\"=$1", connection, transaction))
+        {
+            updateBonus.Parameters.AddWithValue(userId);
+            updateBonus.Parameters.AddWithValue(growth.Bonus);
+            await updateBonus.ExecuteNonQueryAsync();
+        }
         await transaction.CommitAsync();
 
-        var present = new List<object?> { DataObject(4, updatedCharacter) };
+        context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
+            "角色经验更新 operation=character-experience userId={UserId} characterId={CharacterId} from={From} to={To} gain={Gain} bonus={Bonus} outcome=success",
+            userId, characterId, character.Level, next.Level, growth.Gain, growth.Bonus);
+        var present = new List<object?> { DataObject(4, updatedCharacter), DataObject(67, new object?[] { userId, (float)growth.Bonus, 0f }) };
         present.AddRange(updatedItems.Select(item => DataObject(27, new object?[] { UserScopedId(userId, item.ItemMasterId), item.ItemMasterId, item.QuantityRemaining })));
         return present.ToArray();
     }
@@ -127,20 +143,11 @@ sealed partial class UserDataService
         return items;
     }
 
-    static int CharacterExperienceValue(long itemMasterId)
-    {
-        if (!CharacterProgressionRules.TryGetItemExperience(itemMasterId, out var experience))
-        {
-            throw new BadHttpRequestException(CharacterProgressionErrors.InvalidRequest);
-        }
-        return experience;
-    }
-
     static async Task<CharacterExperienceState> ReadCharacterForUpdateAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId, long characterId)
     {
         await using var command = new NpgsqlCommand(
             """
-            select level, exp
+            select level, exp, character_master_id
             from user_character_cards
             where id = $1 and "userId" = $2
             for update
@@ -149,7 +156,7 @@ sealed partial class UserDataService
         command.Parameters.AddWithValue(userId);
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) throw new BadHttpRequestException(CharacterProgressionErrors.CharacterMissing, StatusCodes.Status404NotFound);
-        return new CharacterExperienceState(reader.GetInt32(0), reader.GetInt32(1));
+        return new CharacterExperienceState(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt64(2));
     }
 
     static async Task<int> ConsumeExperienceItemAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId, long itemMasterId, int quantity, string insufficientError = CharacterProgressionErrors.ItemInsufficient)
@@ -197,5 +204,5 @@ sealed partial class UserDataService
             false, null, 0, 1, reader.GetBoolean(9)
         };
     readonly record struct ExperienceItemRequest(long ItemMasterId, int Quantity, int QuantityRemaining);
-    readonly record struct CharacterExperienceState(int Level, int Experience);
+    readonly record struct CharacterExperienceState(int Level, int Experience, long MasterId);
 }

@@ -201,6 +201,8 @@ static class DatabaseMigrator
         await MusicUnlockSchema.MigrateAsync(connection);
         await MigrateCharacterSenseLevelsAsync(connection);
         await MigrateActorPortalAsync(connection);
+        await SocialRealtimeSchema.MigrateAsync(connection);
+        await CharacterGrowthSchema.MigrateAsync(connection);
         if (config is not null)
         {
             await SeedActiveMasterDataVersionAsync(connection, config);
