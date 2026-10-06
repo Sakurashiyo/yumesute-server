@@ -4,12 +4,12 @@ using System.Text.Json;
 static class PlayerProgressionRules
 {
     public sealed record RankRule(int Rank, int RequiredExp, int MaxStamina);
-    public sealed record Chart(long Id, int Difficulty, int Level, long MusicMasterId);
+    public sealed record Chart(long Id, int Difficulty, int Level, long MusicMasterId, int UnlockCondition = 0, int? UnlockValue = null);
     public sealed record RankProgress(int Rank, int Exp, int MaxStamina, int StaminaRecovery);
     static readonly Dictionary<int, RankRule> Ranks = ReadTable("PlayerRankMaster")
         .ToDictionary(row => row[0].GetInt32(), row => new RankRule(row[0].GetInt32(), row[1].GetInt32(), row[2].GetInt32()));
     public static readonly IReadOnlyDictionary<long, Chart> Charts = ReadTable("LiveMaster")
-        .ToDictionary(row => row[0].GetInt64(), row => new Chart(row[0].GetInt64(), row[1].GetInt32(), row[3].GetInt32(), row[2].GetInt64()));
+        .ToDictionary(row => row[0].GetInt64(), row => new Chart(row[0].GetInt64(), row[1].GetInt32(), row[3].GetInt32(), row[2].GetInt64(), row[5].GetInt32(), row[6].ValueKind == JsonValueKind.Null ? null : row[6].GetInt32()));
     public static readonly IReadOnlyDictionary<long, Chart> AnotherNotations = ReadTable("AnotherNotationMaster")
         .ToDictionary(row => row[0].GetInt64(), row => new Chart(row[0].GetInt64(), row[4].GetInt32(), row[5].GetInt32(), row[1].GetInt64()));
 

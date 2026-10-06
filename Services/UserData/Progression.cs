@@ -1,11 +1,11 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using Npgsql;
 
 sealed partial class UserDataService
 {
     public sealed record LiveSettlement(object?[] Result, object?[] Present);
 
-    public async Task RegisterLiveStartAsync(HttpContext context, object? payload)
+    public async Task RegisterLiveStartAsync(HttpContext context, object? payload, bool validateMusicUnlock = true)
     {
         if (payload is not object?[] start || start.Length < 8 ||
             !long.TryParse(start[1]?.ToString(), out var chartId) || !PlayerProgressionRules.Charts.ContainsKey(chartId) ||
@@ -20,6 +20,7 @@ sealed partial class UserDataService
                 "演出缺少可持久化角色编队 userId={UserId} partyId={PartyId} operation={Operation}",userId,GetLong(start,0),"character-mission-snapshot");
         await using var transaction = await connection.BeginTransactionAsync();
         await LockLessonUserAsync(connection, transaction, userId);
+        if (validateMusicUnlock) await ValidateMusicDifficultyAsync(connection, userId, PlayerProgressionRules.Charts[chartId], auto);
         await using var command = new NpgsqlCommand(
             """
             insert into user_live_sessions ("userId", live_master_id, is_auto, use_stamina, character_mission_party)
@@ -117,7 +118,13 @@ sealed partial class UserDataService
                 if (!hash.AsSpan().SequenceEqual(reader.GetFieldValue<byte[]>(4)))
                     throw new BadHttpRequestException(LiveProgressionErrors.SessionConflict, 409);
                 var cached = (object?[])MsgPack.Decode(reader.GetFieldValue<byte[]>(3))!;
-                return new((object?[])cached[0]!, (object?[])cached[1]!);
+                // 结算奖励沿用幂等缓存，谱面状态取当前存档，避免迟到重试覆盖后来购买的解锁。
+                await reader.DisposeAsync();
+                var replay = ((object?[])cached[1]!).Cast<object?[]>()
+                    .Where(row=>Convert.ToInt32(row[0]) is not (25 or 130)).Cast<object?>().ToList();
+                replay.AddRange((await ReadLiveMusicStatesAsync(connection,userId)).Select(row=>DataObject(25,row)));
+                replay.Add(DataObject(130,await ReadLiveAchievementAsync(connection,userId)));
+                return new((object?[])cached[0]!, replay.ToArray());
             }
             chartId = reader.GetInt64(0); auto = reader.GetBoolean(1); useStamina = reader.GetBoolean(2);
             // 旧会话没有队伍快照，不能凭当前编队补写无法核实的历史角色进度。
@@ -149,7 +156,7 @@ sealed partial class UserDataService
                 await using var reader = await previous.ExecuteReaderAsync();
                 if (await reader.ReadAsync()) { bestAchievement = reader.GetDouble(0); bestNotation = reader.GetDouble(1); beforeLamp = reader.GetInt32(2); }
             }
-            await SaveChartResultAsync(connection, transaction, userId, chart, score, achievement, notation, lamp, cleared);
+            await SaveChartResultAsync(connection, transaction, userId, chart, score, achievement, notation, lamp, chart.Difficulty==5 ? cleared && alive : cleared);
         }
         await ExecuteAsync(connection, transaction,
             """
@@ -160,6 +167,8 @@ sealed partial class UserDataService
         await ExecuteAsync(connection, transaction, "update user_item_currencies set coin = coin + $2 where \"userId\" = $1", userId, coins);
         var rewards = cleared ? CapturedLiveItemRewards : Array.Empty<(long ItemMasterId, int Quantity)>();
         foreach (var reward in rewards) await UpsertItemQuantityAsync(connection, transaction, userId, reward.ItemMasterId, reward.Quantity);
+        await RecordDifficultyUnlockAsync(connection,transaction,userId,chart,finish,auto,cleared,achievement);
+        await SynchronizeMusicUnlocksAsync(connection,transaction,userId);
         var rating = await ReadPlayerRatingAsync(connection, userId);
         await ExecuteAsync(connection, transaction, "update user_live_user_stats set score_rating = $2 where \"userId\" = $1", userId, rating);
         // 不再向普通演出注入抓包里的活动、试镜和任务进度。
@@ -187,14 +196,19 @@ sealed partial class UserDataService
         foreach (var row in await ReadItemPossessionsAsync(connection, userId))
             if (rewards.Any(reward => reward.ItemMasterId == Convert.ToInt64(row[1]))) present.Add(DataObject(27, row));
         present.AddRange((await ReadCharacterMissionsAsync(connection,userId)).Select(row => DataObject(96,row)));
+        var musicStates = await ReadLiveMusicStatesAsync(connection,userId);
+        present.AddRange(musicStates.Select(row=>DataObject(25,row)));
+        present.Add(DataObject(130,await ReadLiveAchievementAsync(connection,userId)));
         var settlement = new LiveSettlement(result,present.ToArray());
         await ExecuteAsync(connection, transaction,
             "update user_live_sessions set completion = $2, finish_hash = $3 where \"userId\" = $1",
             userId, MsgPack.Encode(new object?[] { settlement.Result, settlement.Present }), hash);
         await transaction.CommitAsync();
         context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
-            "Live settlement userId={UserId} chartId={ChartId} auto={Auto} cleared={Cleared} score={Score} achievement={Achievement} rank={Rank} exp={Exp} rating={Rating}",
-            userId, chartId, auto, cleared, score, achievement, next.Rank, next.Exp, rating);
+            "Live settlement userId={UserId} chartId={ChartId} auto={Auto} cleared={Cleared} score={Score} achievement={Achievement} rank={Rank} exp={Exp} rating={Rating} stellaReleased={StellaReleased} olivierStatus={OlivierStatus}",
+            userId, chartId, auto, cleared, score, achievement, next.Rank, next.Exp, rating,
+            musicStates.Single(row=>Convert.ToInt64(row[2])==chart.MusicMasterId)[5],
+            musicStates.Single(row=>Convert.ToInt64(row[2])==chart.MusicMasterId)[8]);
         return settlement;
     }
 

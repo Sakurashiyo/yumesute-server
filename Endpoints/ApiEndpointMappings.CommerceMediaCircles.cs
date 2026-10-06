@@ -170,21 +170,7 @@ static partial class ApiEndpointMappings
                 "shops-exchange-market-things-five-frame");
         });
 
-        app.MapMethods("/localap/api/Shops/ExchangeMusic/{musicMasterId:long}", new[] { "GET", "POST" }, async (HttpContext context, long musicMasterId) =>
-        {
-            var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
-            await logger.LogAsync($"shops-exchange-music musicMasterId={musicMasterId} payload={ValueFormatter.Format(body)}");
-            var presentData = GameResults.ExchangeMusicPresentData(musicMasterId);
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.ExchangeMusicResult(musicMasterId),
-                presentData,
-                Array.Empty<object?>(),
-                GameResults.ExchangeMusicNotifications(musicMasterId),
-                presentData.Length > 3
-                    ? "present-lz4-when-not-empty-five-frame"
-                    : "shops-exchange-music-five-frame");
-        });
+        MapMusicExchangeEndpoints(app,state,codec,logger);
 
         MapGachaEndpoints(app,state,codec,logger);
     }

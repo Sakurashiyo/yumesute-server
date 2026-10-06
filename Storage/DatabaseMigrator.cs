@@ -198,6 +198,7 @@ static class DatabaseMigrator
         await CharacterMissionSchema.MigrateAsync(connection);
         await AnotherNotationSchema.MigrateAsync(connection);
         await AccountRecoverySchema.MigrateAsync(connection);
+        await MusicUnlockSchema.MigrateAsync(connection);
         await MigrateCharacterSenseLevelsAsync(connection);
         await MigrateActorPortalAsync(connection);
         if (config is not null)

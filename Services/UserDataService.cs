@@ -574,6 +574,7 @@ sealed partial class UserDataService
             var name = await ReadUserNameAsync(connection, transaction, userId) ?? "LocalPlayer";
             await InsertDefaultUserDataAsync(connection, transaction, userId, name);
             await NormalizeRankAsync(connection, transaction, userId);
+            await SynchronizeMusicUnlocksAsync(connection, transaction, userId);
             await transaction.CommitAsync();
         }
         catch
@@ -672,6 +673,7 @@ sealed partial class UserDataService
         result.AddRange(livePlayResults.Select(value => DataObject(24, value)));
         result.AddRange(anotherNotationResults.Select(value => DataObject(AnotherNotationUnionKey, value)));
         result.AddRange(liveMusicStates.Select(value => DataObject(25, value)));
+        result.Add(DataObject(130,await ReadLiveAchievementAsync(connection,userId)));
         result.AddRange(dugongRunStates.Select(value => DataObject(177, value)));
         result.AddRange(characterResourceProgress.Select(value => DataObject(96, value)));
         result.Add(DataObject(94, notification));
@@ -1472,7 +1474,7 @@ sealed partial class UserDataService
     {
         await using var command = new NpgsqlCommand(
             """
-            select id, music_master_id, is_unlocked
+            select id, music_master_id, is_unlocked, stella_released, olivier_release_status
             from user_live_music_states
             where "userId" = $1
             order by music_master_id
@@ -1491,10 +1493,10 @@ sealed partial class UserDataService
                 reader.GetInt64(1),
                 null,
                 null,
-                false,
+                reader.GetBoolean(3),
                 null,
                 0,
-                0,
+                reader.GetInt32(4),
                 reader.GetBoolean(2)
             });
         }

@@ -146,7 +146,18 @@ erDiagram
 
 `user_game_states.rank_limit` 是等级上限，初始 50，和 `max_stamina` 分开存储。升级按 `PlayerRankMaster` 消耗经验并恢复体力，达到上限后经验最多保留至门槛减 1。旧存档中超出门槛的经验在读取前归一化，不清空存档。奖励数量和基础经验暂时仍采用既有普通演出兼容值，不是完整官服奖励计算器。
 
-`user_live_music_states` 保存 key 25 的乐曲解锁/拥有状态。`user_live_lesson_party_states` 保存 key 39 的课程/教程演出队伍状态。`user_live_course_states` 保存 key 90 一类 Live 课程或教程状态，未确认字段保存在 `payload`。
+`user_live_music_states` 保存 union25 的乐曲状态，唯一键为 `(userId, music_master_id)`，实例 ID 按玩家和歌曲稳定生成。`is_unlocked` 对应 Music key9 的 `IsPossession`；新增 `stella_released` 对应 key5，`olivier_release_status` 对应 key8（0 未开放、1 可挑战、2 可购买、3 已购买）。启动执行 `MusicUnlockSchema` 非破坏迁移，保留已有拥有状态；默认歌曲初始化为已拥有，付费歌曲需要实际兑换。
+
+STELLA：已拥有歌曲的 EXTRA 手动通关、最终 LIFE > 0 且 GOOD/BAD/MISS 合计不超过对应 `LiveMaster.UnlockValue`（当前为 10）时保存解锁；无条件谱面、玩家等级 >= 20，或已购买 OLIVIER >= 20 张同样开放已拥有歌曲的 STELLA。自动与失败演出不写入判定解锁。
+
+OLIVIER：已拥有歌曲 STELLA 手动通关且达成率 >= 100% 后变为可挑战；手动通关 OLIVIER 且最终 LIFE > 0 后，根据主数据难度等级开放同级及以下谱面的购买。购买仍需拥有歌曲并开放 STELLA，消耗 1 张 `130001`（歌劇目録）后变为 3；非默认歌曲消耗 10 张。玩家状态行锁、条件扣票和解锁更新在同一事务内完成，重复购买返回当前状态，不再次扣票。普通单人演出检查拥有/解锁状态；协力及活动保留借用歌曲入口，借用不会获得歌曲永久拥有、STELLA 或挑战资格。
+
+union130 的 `LiveAchievement` 按存档计算 `[userId, 已购买OLIVIER数量, 最高通关OLIVIER等级]`。登录、开始、结算和兑换同步真实 union25/130；不再使用演出开始的随机实例 ID 或固定未解锁字段覆盖客户端缓存。既有结算缓存仍保证重试不重复发奖；缓存重放时刷新 union25/130，迟到结算不会覆盖后续谱面购买。旧版本从未保存的购买响应及逐场判定无法可靠恢复，不凭猜测补发拥有状态或判定解锁。
+
+逆向依据为 2.31.1 ARM64 客户端 `split_config.arm64_v8a/lib/arm64-v8a/libil2cpp.so`（SHA256 `5974E6BCEC37B2D9D41C3353BD111EB92723228CA02DCB7659FFCFE965C66DAA`）与匹配的 Il2CppDumper 输出：`LiveHelper.IsStellaReleased` RVA `0xACA72AC` 验证拥有状态、条件类型与 rank > 19；`MusicSelectionPresenter.<OnLongTapDifficultySelected>.MoveNext` RVA `0xADD13FC` 的 `0xADD1AA4–0xADD1AB0` 比较 ILive.AchievementRate 与 float 100.0，随后要求 Music.OlivierReleaseStatus == 1；`MusicShopModel.CreateMusicLiveProductParameter` RVA `0xB6D16B4` 使用道具 130001、数量 1。主数据 `UnlockConditionMaster[13]` 给出 EXTRA 的 GOOD 以下 <= 10 和 OLIVIER 20 张条件，`LiveMaster` 与 `MusicMaster` 提供谱面关联及默认/购买条件。客户端 `Music` MessagePack keys 5/8/9 和 `LiveAchievement` union130 定义用于同步，`StartLivePayload` 没有独立的 OLIVIER 挑战标志。
+
+工作区现有检查工具 `tools/ProgressionChecks` 新增 `--database --music-unlocks`：覆盖 GOOD 10/11、rank 19/20、OLIVIER 19/20 张、100% 挑战门槛、失败/自动/LIFE=0、商店等级范围、并发结算/购买、余额不足、五帧协议、重登录、借用歌曲及账号隔离。测试使用临时账号并在结束后清理。
+`user_live_lesson_party_states` 保存 key 39 的课程/教程演出队伍状态。`user_live_course_states` 保存 key 90 一类 Live 课程或教程状态，未确认字段保存在 `payload`。
 
 ## 活动、商店和媒体状态表
 `user_story_event_states` 保存 key 101 的活动点数、排名和提示阅读状态。`user_event_exchange_shop_states` 保存 key 102 的活动兑换商店兑换次数。`user_shop_purchase_states` 保存 key 108 的商店购买次数和限购刷新状态。`user_episode_read_states` 保存 key 95 的剧情阅读状态。`user_photo_records` 保存 key 123 的生成照片记录。`user_photo_states` 保存 key 124 的照片系统状态。`user_music_video_watch_states` 保存 key 131 的音乐视频观看状态。`user_raw_union_states` 作为 key 193 等尚未确认语义的用户状态兜底表。

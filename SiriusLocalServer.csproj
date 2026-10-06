@@ -27,6 +27,7 @@
     <EmbeddedResource Include="masterdata-export/tables/CharacterLessonScoreRewardMaster.json" LogicalName="Lesson.CharacterLessonScoreRewardMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/LessonScoreRewardGroupMaster.json" LogicalName="Lesson.LessonScoreRewardGroupMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/PlayerRankMaster.json" LogicalName="Progression.PlayerRankMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/MusicMaster.json" LogicalName="Progression.MusicMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/LiveMaster.json" LogicalName="Progression.LiveMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/AnotherNotationMaster.json" LogicalName="Progression.AnotherNotationMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterExperienceItemMaster.json" LogicalName="Progression.CharacterExperienceItemMaster.json" />

@@ -54,7 +54,7 @@ static partial class ApiEndpointMappings
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.LiveStartResult(body),
-                GameResults.LiveStartPresentData(body),
+                await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 "result-lz4-five-frame");
@@ -64,11 +64,11 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-ghost-live payload={ValueFormatter.Format(body)}");
-            await state.UserDataService.RegisterLiveStartAsync(context, body);
+            await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.GhostLiveStartResult(body),
-                GameResults.GhostLiveStartPresentData(body),
+                await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 "result-lz4-five-frame");
@@ -79,11 +79,11 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-multi-live payload={ValueFormatter.Format(body)}");
             if (body is object?[] multi && multi.Length >= 3)
-                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, multi[0], null, null, multi[2], 1, null, false });
+                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, multi[0], null, null, multi[2], 1, null, false }, validateMusicUnlock:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.MultiLiveStartResult(body),
-                GameResults.MultiLiveStartPresentData(body),
+                await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 "result-lz4-five-frame");
@@ -93,11 +93,11 @@ static partial class ApiEndpointMappings
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-start-music-course-live payload={ValueFormatter.Format(body)}");
-            await state.UserDataService.RegisterLiveStartAsync(context, body);
+            await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.LiveStartResult(body),
-                GameResults.LiveStartPresentData(body),
+                await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 "result-lz4-five-frame");
@@ -108,11 +108,12 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-triple-cast-live payload={ValueFormatter.Format(body)}");
             if (body is object?[] triple && triple.Length >= 1)
-                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, triple[0], null, null, true, 1, null, false });
+                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, triple[0], null, null, true, 1, null, false }, validateMusicUnlock:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.TripleCastLiveStartResult(body),
-                GameResults.TripleCastLiveStartPresentData(body),
+                (await state.UserDataService.GetMusicPresentDataAsync(context)).Concat(
+                    GameResults.TripleCastLiveStartPresentData(body).OfType<object?[]>().Where(row=>row[0] is not 25)).ToArray(),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 "result-present-lz4-five-frame");
@@ -134,11 +135,11 @@ static partial class ApiEndpointMappings
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-start-trial-party-event-stage payload={ValueFormatter.Format(body)}");
-            await state.UserDataService.RegisterLiveStartAsync(context, body);
+            await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.LiveStartResult(body),
-                GameResults.LiveStartPresentData(body),
+                await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 "result-lz4-five-frame");
