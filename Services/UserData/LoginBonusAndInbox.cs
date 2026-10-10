@@ -25,6 +25,7 @@ sealed partial class UserDataService
         await using var connection = await database.OpenConnectionAsync();
 
         var bootstrapKeys = activeRewards.Select(reward => $"login-bonus-{windowKey}-{reward.Id}").ToArray();
+        var currentLoginCount = 0;
         await using var transaction = await connection.BeginTransactionAsync();
         // 条件更新同时锁定领取状态，重复或并发请求不能再次发奖。
         await using (var claim = new NpgsqlCommand(
@@ -33,13 +34,16 @@ sealed partial class UserDataService
             set current_count = current_count + 1, total_count = total_count + 1,
                 shown_at = $3, status = 1, updated_at = now()
             where "userId" = $1 and (status <> 1 or shown_at < $2)
+            returning current_count
             """, connection, transaction))
         {
             claim.Parameters.AddWithValue(userId.Value);
             claim.Parameters.AddWithValue(windowStartUtc);
             claim.Parameters.AddWithValue(now.UtcDateTime);
-            if (await claim.ExecuteNonQueryAsync() == 0)
+            var claimedCount = await claim.ExecuteScalarAsync();
+            if (claimedCount is null)
                 return new LoginBonusReceiveResult(Array.Empty<object?>(), Array.Empty<object?>());
+            currentLoginCount = Convert.ToInt32(claimedCount);
         }
         try
         {
@@ -84,7 +88,7 @@ sealed partial class UserDataService
         var packages = await ReadInboxPackagesByBootstrapKeysAsync(connection, userId.Value, bootstrapKeys);
         var presentData = packages.Select(value => DataObject(41, value)).ToArray();
         return new LoginBonusReceiveResult(
-            activeRewards.Select(BuildLoginBonusResult).ToArray<object?>(),
+            activeRewards.Select(reward => BuildLoginBonusResult(reward, currentLoginCount)).ToArray<object?>(),
             presentData);
     }
 
@@ -400,7 +404,7 @@ sealed partial class UserDataService
         };
     }
 
-    static object?[] BuildLoginBonusResult(LoginBonusReward reward)
+    static object?[] BuildLoginBonusResult(LoginBonusReward reward, int currentLoginCount)
     {
         var dailyRewards = Enumerable.Range(1, reward.Days)
             .Select(day => new object?[] { reward.ThingType, reward.MasterId, reward.Quantity, day })
@@ -409,7 +413,7 @@ sealed partial class UserDataService
         return new object?[]
         {
             reward.Id,
-            1,
+            currentLoginCount,
             new object?[] { new object?[] { reward.ThingType, reward.MasterId, reward.Quantity, null, null, null, false } },
             reward.Title,
             1,
