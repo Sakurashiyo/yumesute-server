@@ -85,7 +85,34 @@ dotnet run --project SiriusLocalServer.csproj
 
 启动时会执行数据库迁移。健康检查地址为 `http://127.0.0.1:8787/health`；本机存档管理页面为 `http://127.0.0.1:8787/admin/save-editor/`。
 
-启动依次读取可执行文件目录、当前工作目录下的 `csharp-server` 子目录和当前工作目录中的 `.env`，后加载的配置覆盖同名项。发布构建时会将本机 `.env` 复制到输出目录。公开源码提交 `.env.example`，实际 `.env` 已通过 `.gitignore` 排除；分发可执行程序时也请使用示例配置，避免将个人配置随压缩包发布。
+启动依次读取可执行文件目录、当前工作目录下的 `csharp-server` 子目录和当前工作目录中的 `.env`，后加载的配置覆盖同名项。普通构建将 `.env` 复制到输出目录，`dotnet publish` 不携带本机 `.env`。部署时根据 `.env.example` 单独填写服务器配置。
+
+## Ubuntu 24.04 部署
+
+Windows 构建生成的 `.exe` 不能直接在 Linux 执行。项目使用跨平台的 ASP.NET Core；在有 .NET 10 SDK 的机器上发布 Linux x64 版本：
+
+```bash
+dotnet publish SiriusLocalServer.csproj -c Release -r linux-x64 --self-contained false -o publish/linux-x64
+```
+
+将整个发布目录上传到服务器，例如 `/opt/yumesute-server`。Ubuntu 上安装 ASP.NET Core 10 Runtime 和 PostgreSQL；ARM64 服务器将发布命令的 `linux-x64` 改成 `linux-arm64`。也可以使用 `--self-contained true` 将 .NET 运行时一并打包。
+
+发布目录包含运行所需的 `masterdata-export` JSON；还需自行上传 `mastermemory.db` 和游戏资源。将 `.env.example` 复制到部署目录并填写数据库、密钥、版本和 Linux 路径，例如：
+
+```dotenv
+MASTER_DATA_FILE=/srv/yumesute-data/local-masterdata/2026-09-29/mastermemory.db
+RESOURCES_ROOT=/srv/yumesute-data/Resources
+ADDRESSABLES_ROOT=/srv/yumesute-data/com.unity.addressables
+```
+
+Linux 文件名区分大小写，请保留资源原始目录和文件名大小写，不要沿用 `D:\...` 等 Windows 路径。从部署目录启动：
+
+```bash
+cd /opt/yumesute-server
+dotnet SiriusLocalServer.dll
+```
+
+使用 Nginx 时，HTTP API 反向代理到 `PORT`（默认 8787），realtime 使用 `grpc_pass grpc://127.0.0.1:8788` 转发到 `REALTIME_PORT`；外部 realtime 入口需要 HTTP/2 和 TLS。`PUBLIC_BASE_URL`、`STATIC_CONTENT_URL` 和 `REALTIME_BASE_URL` 分别填写客户端实际访问的地址。数据库迁移在启动时自动执行，服务用户需要对部署目录有日志写入权限、对数据目录有读取权限。
 
 如果客户端运行在另一台设备或模拟器中，`PUBLIC_BASE_URL` 必须改为客户端可访问的主机地址，并按需调整 `HOST` 与防火墙规则。HTTP API 和实时连接分别使用 `PORT`、`REALTIME_PORT`；不要将测试服务直接暴露到公网。
 

@@ -1399,6 +1399,14 @@ static class DatabaseMigrator
       primary key ("userId", union_key, object_key)
     );
 
+    create table if not exists user_market_states (
+      "userId" bigint primary key references user_accounts(id) on delete cascade,
+      last_refreshed_at timestamptz not null,
+      refresh_times integer not null default 0 check (refresh_times between 0 and 10),
+      payload jsonb not null,
+      updated_at timestamptz not null default now()
+    );
+
     alter table user_home_display_preferences
       alter column sub_costume_master_id_1 drop not null,
       alter column sub_costume_master_id_2 drop not null,
@@ -1547,6 +1555,8 @@ static class DatabaseMigrator
       expires_at timestamptz not null,
       created_at timestamptz not null default now()
     );
+    create index if not exists user_auth_sessions_token_hash_idx
+      on user_auth_sessions(token_hash);
 
     create table if not exists user_login_identities (
       login_token_hash text primary key,

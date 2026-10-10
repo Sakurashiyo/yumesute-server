@@ -12,6 +12,7 @@ static class AssetEndpointMappings
             var normalizedFile = Uri.UnescapeDataString(file ?? "").Replace('\\', '/').TrimStart('/');
             if (normalizedFile.StartsWith("scenes/", StringComparison.OrdinalIgnoreCase))
             {
+                if (RedirectRemoteAsset(context, config, normalizedFile)) return;
                 await assets.SendSceneFileAsync(context, assets.ResolveAssetFile(normalizedFile), codec);
                 return;
             }
@@ -36,21 +37,25 @@ static class AssetEndpointMappings
 
         app.MapMethods("/scenes/{file}", new[] { "GET", "HEAD" }, async (HttpContext context, string file) =>
         {
+            if (RedirectRemoteAsset(context, config, $"scenes/{file}")) return;
             await assets.SendSceneFileAsync(context, assets.ResolveAssetFile($"scenes/{file}"), codec);
         });
 
         app.MapMethods("/localassets/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
+            if (RedirectRemoteAsset(context, config, path)) return;
             await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(path ?? ""), codec);
         });
 
         app.MapMethods("/Resources/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
+            if (RedirectRemoteAsset(context, config, path)) return;
             await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(path ?? ""), codec);
         });
 
         app.MapMethods("/static/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
+            if (RedirectRemoteAsset(context, config, path)) return;
             if (ShouldServeTransparentPng(path))
             {
                 await SendTransparentPngAsync(context, codec, state.Logger);
@@ -70,13 +75,23 @@ static class AssetEndpointMappings
 
         app.MapMethods("/com.unity.addressables/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
+            if (RedirectRemoteAsset(context, config, path, true)) return;
             await assets.SendLocalFileAsync(context, assets.ResolveAddressablesFile(path ?? ""), codec);
         });
 
         app.MapMethods("/localassets/com.unity.addressables/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
+            if (RedirectRemoteAsset(context, config, path, true)) return;
             await assets.SendLocalFileAsync(context, assets.ResolveAddressablesFile(path ?? ""), codec);
         });
+    }
+
+    static bool RedirectRemoteAsset(HttpContext context, LocalConfig config, string? path, bool addressablesOnly = false)
+    {
+        var target = RemoteAssetPaths.Resolve(config, path ?? "", addressablesOnly);
+        if (target is null) return false;
+        context.Response.Redirect(target, permanent: false);
+        return true;
     }
 
     static bool TryReadEpisodeDetailAssetSource(string file, out long episodeMasterId)

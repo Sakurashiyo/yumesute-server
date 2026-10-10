@@ -18,6 +18,9 @@
     string MsgPackResponseMode,
     string RegisterResponseMode)
 {
+    public string? ResourcesBaseUrl { get; init; }
+    public string? AddressablesBaseUrl { get; init; }
+
     public int RealtimePort
     {
         get
@@ -57,7 +60,23 @@
             Required("DATABASE_URL"),
             Required("TOKEN_SECRET"),
             responseMode,
-            Optional("REGISTER_RESPONSE_MODE") ?? responseMode);
+            Optional("REGISTER_RESPONSE_MODE") ?? responseMode)
+        {
+            ResourcesBaseUrl = RemoteBaseUrl("RESOURCES_BASE_URL"),
+            AddressablesBaseUrl = RemoteBaseUrl("ADDRESSABLES_BASE_URL")
+        };
+    }
+
+    static string? RemoteBaseUrl(string key)
+    {
+        var value = Optional(key);
+        if (value is null) return null;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https") ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+            throw new InvalidOperationException($"配置 {key} 必须为不带凭据、查询参数或片段的 HTTP(S) 根地址");
+        return uri.AbsoluteUri.TrimEnd('/');
     }
 
     static string? Optional(string key)

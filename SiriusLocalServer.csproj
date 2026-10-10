@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/bin/**;**/obj/**;CertGen/**;build-check-auth/**;build-check-current/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
@@ -14,7 +15,9 @@
   <ItemGroup>
     <None Update=".env">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
+    <Content Update="masterdata-export/**/*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="masterdata-export/tables/StoryMaster.json" LogicalName="Episode.StoryMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/StoryEventEpisodeMaster.json" LogicalName="Episode.StoryEventEpisodeMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/SpotConversationMaster.json" LogicalName="Episode.SpotConversationMaster.json" />
@@ -27,6 +30,7 @@
     <EmbeddedResource Include="masterdata-export/tables/EffectMaster.json" LogicalName="Status.EffectMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/JewelShopItemMaster.json" LogicalName="Shop.JewelShopItemMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/PermanentMarketThingMaster.json" LogicalName="Shop.PermanentMarketThingMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/MarketFrameThingMaster.json" LogicalName="Shop.MarketFrameThingMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterLessonScoreRewardMaster.json" LogicalName="Lesson.CharacterLessonScoreRewardMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/LessonScoreRewardGroupMaster.json" LogicalName="Lesson.LessonScoreRewardGroupMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/PlayerRankMaster.json" LogicalName="Progression.PlayerRankMaster.json" />

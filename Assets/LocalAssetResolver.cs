@@ -21,6 +21,9 @@ sealed partial class LocalAssetResolver
             if (addressables is not null && File.Exists(addressables)) return addressables;
         }
 
+        var comicImage = ResolveComicImageFile(requestPath);
+        if (comicImage is not null) return comicImage;
+
         var versionedScene = ResolveVersionedSceneFile(requestPath);
         if (versionedScene is not null) return versionedScene;
 
@@ -40,6 +43,26 @@ sealed partial class LocalAssetResolver
         }
 
         return null;
+    }
+
+    string? ResolveComicImageFile(string requestPath)
+    {
+        var normalized = Uri.UnescapeDataString(requestPath).Replace('\\', '/').TrimStart('/');
+        var comicPath = normalized.StartsWith("Resources/comic/", StringComparison.OrdinalIgnoreCase)
+            ? normalized["Resources/".Length..]
+            : normalized;
+        if (!comicPath.StartsWith("comic/", StringComparison.OrdinalIgnoreCase) ||
+            Path.HasExtension(comicPath))
+        {
+            return null;
+        }
+
+        var imagePath = $"{comicPath}.png";
+        return SafeCombine(config.ResourcesRoot, imagePath) is { } resourcePath && File.Exists(resourcePath)
+            ? resourcePath
+            : SafeCombine(config.AddressablesRoot, imagePath) is { } addressablesPath && File.Exists(addressablesPath)
+                ? addressablesPath
+                : null;
     }
 
     string? ResolveVersionedSceneFile(string requestPath)

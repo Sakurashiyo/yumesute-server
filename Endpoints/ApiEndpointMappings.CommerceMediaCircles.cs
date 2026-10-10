@@ -133,41 +133,26 @@ static partial class ApiEndpointMappings
 
         app.MapMethods("/localap/api/Shops/GetOrRefreshMarket", new[] { "GET", "POST" }, async context =>
         {
-            var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
-            await logger.LogAsync($"shops-get-or-refresh-market payload={ValueFormatter.Format(body)}");
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.MarketResult(),
-                Array.Empty<object?>(),
-                Array.Empty<object?>(),
-                Array.Empty<object?>(),
-                "shops-get-or-refresh-market-five-frame");
+            try { var response = await state.UserDataService.GetMarketAsync(context, false); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-get-or-refresh-market-five-frame"); }
+            catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }
         });
 
         app.MapMethods("/localap/api/Shops/RefreshMarketWithJewel", new[] { "GET", "POST" }, async context =>
         {
-            var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
-            await logger.LogAsync($"shops-refresh-market-with-jewel payload={ValueFormatter.Format(body)}");
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.MarketResult(),
-                GameResults.RefreshMarketPresentData(withJewel: true),
-                Array.Empty<object?>(),
-                Array.Empty<object?>(),
-                "shops-refresh-market-with-jewel-five-frame");
+            try { var response = await state.UserDataService.GetMarketAsync(context, true); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-refresh-market-with-jewel-five-frame"); }
+            catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }
+        });
+
+        app.MapMethods("/localap/api/Shops/UpdateMarketWithJewel", new[] { "GET", "POST" }, async context =>
+        {
+            try { var response = await state.UserDataService.GetMarketAsync(context, true); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-refresh-market-with-jewel-five-frame"); }
+            catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }
         });
 
         app.MapMethods("/localap/api/Shops/ExchangeMarketThings", new[] { "GET", "POST" }, async context =>
         {
-            var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
-            await logger.LogAsync($"shops-exchange-market-things payload={ValueFormatter.Format(body)}");
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.ExchangeMarketThingsResult(),
-                GameResults.ExchangeMarketThingsPresentData(),
-                Array.Empty<object?>(),
-                new object?[] { new object?[] { 0, new object?[] { 9, 9 } } },
-                "shops-exchange-market-things-five-frame");
+            try { var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null; var response = await state.UserDataService.ExchangeMarketThingsAsync(context, body); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-exchange-market-things-five-frame"); }
+            catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }
         });
 
         MapMusicExchangeEndpoints(app,state,codec,logger);
