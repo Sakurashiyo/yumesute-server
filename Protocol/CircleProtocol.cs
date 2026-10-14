@@ -56,6 +56,18 @@ static class CircleProtocol
         _ => null
     };
 
+    // 客户端将 Companies 的枚举名称放在路径中，将数值放在查询参数中。
+    public static int? ReadSupportCompany(string? value) => value switch
+    {
+        "None" => 0,
+        "Sirius" => 1,
+        "Eden" => 2,
+        "Gingaza" => 3,
+        "Denki" => 4,
+        _ when int.TryParse(value, out var company) && company is >= 0 and <= 4 => company,
+        _ => null
+    };
+
     static bool OptionalId(object? value, out long? id)
     {
         id = Integer(value);

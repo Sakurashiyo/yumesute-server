@@ -46,8 +46,9 @@ sealed partial class UserDataService
     public async Task<object?[]> SetCircleSupportCompanyAsync(HttpContext context,string? value)
     {
         var user=await RequireAuthenticatedUserAsync(context);
-        if(!int.TryParse(value,out var company) || company is <0 or >4 ||
-            context.Request.Query.TryGetValue("company",out var query) && query.ToString()!=value)
+        var parsed=CircleProtocol.ReadSupportCompany(value);
+        if(parsed is not int company ||
+            context.Request.Query.TryGetValue("company",out var query) && CircleProtocol.ReadSupportCompany(query.ToString())!=company)
             return CircleStatus(context,user,"support-company",CircleProtocol.InvalidParameter,false);
         await using var db=await database.OpenConnectionAsync();
         await using var update=new NpgsqlCommand("update user_circle_memberships set support_company=$2 where \"userId\"=$1",db);

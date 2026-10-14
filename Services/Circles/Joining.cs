@@ -14,10 +14,18 @@ sealed partial class UserDataService
         long userId, CircleRow? circle)
     {
         if (circle is null) return CircleProtocol.DataNotFound;
-        await using var command = new NpgsqlCommand(
-            "select exists(select 1 from user_circle_memberships where \"userId\"=$1)", connection, transaction);
-        command.Parameters.AddWithValue(userId);
-        if (await command.ExecuteScalarAsync() is true) return CircleProtocol.AlreadyJoined;
+        // 推荐列表与邀请之间账号可能被删除；取得账号锁后重新确认，避免向已删除账号写入外键。
+        await using (var command = new NpgsqlCommand("""
+            select exists(select 1 from user_accounts where id=$1),
+                   exists(select 1 from user_circle_memberships where "userId"=$1)
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue(userId);
+            await using var reader=await command.ExecuteReaderAsync();
+            await reader.ReadAsync();
+            if (!reader.GetBoolean(0)) return CircleProtocol.DataNotFound;
+            if (reader.GetBoolean(1)) return CircleProtocol.AlreadyJoined;
+        }
         if (circle.Count >= 30) return CircleProtocol.MemberAmountUpperLimit;
         return circle.Payload.Entry switch
         {

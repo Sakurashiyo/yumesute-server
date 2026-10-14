@@ -74,11 +74,12 @@ sealed partial class UserDataService
         var authorized = await GetCircleJoinRequestsAsync(context,circleId);
         if (Convert.ToInt32(authorized[1]) != CircleProtocol.SearchSuccess) return authorized;
         await using var connection = await database.OpenConnectionAsync();
+        // 负数账号 ID 专用于隔离检查，不能出现在真实玩家的推荐列表。
         await using var command = new NpgsqlCommand("""
             select a.public_id,p.display_name,g.rank,g.last_login_at,coalesce(p.title_master_id,0),
                 coalesce(p.home_character_master_id,110010),p.is_home_character_illust,coalesce(p.icon_frame_master_id,190001)
             from user_accounts a join user_profiles p on p."userId"=a.id join user_game_states g on g."userId"=a.id
-            where p.is_public and not exists(select 1 from user_circle_memberships m where m."userId"=a.id)
+            where a.id>0 and p.is_public and not exists(select 1 from user_circle_memberships m where m."userId"=a.id)
             order by g.last_login_at desc,a.id limit 50
             """,connection);
         var users = new List<object?>();
