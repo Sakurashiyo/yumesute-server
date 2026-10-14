@@ -11,6 +11,10 @@
     <EmbeddedResource Include="masterdata-export/tables/StampMaster.json" LogicalName="Realtime.StampMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/NgWordMaster.json" LogicalName="Realtime.NgWordMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterAwakeningItemGroupMaster.json" LogicalName="Progression.CharacterAwakeningItemGroupMaster.json" />
+
+    <EmbeddedResource Include="masterdata-export/tables/CircleSupportCompanyLevelLimitMaster.json" LogicalName="Circle.CircleSupportCompanyLevelLimitMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CircleSupportCompanyLevelDetailMaster.json" LogicalName="Circle.CircleSupportCompanyLevelDetailMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CircleTheaterLevelMaster.json" LogicalName="Circle.CircleTheaterLevelMaster.json" />
   </ItemGroup>
   <ItemGroup>
     <None Update=".env">

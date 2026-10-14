@@ -2,6 +2,7 @@ static partial class ApiEndpointMappings
 {
     static void MapCircleEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
+        MapCircleOperationEndpoints(app,state,codec);
         app.MapPost("/localap/api/Circles/JoinPreRequest", async context =>
             await codec.WriteApiResultAsync(context,
                 await state.UserDataService.CheckCircleJoinAsync(context, context.Request.Query["circleId"].ToString()), "five-frame"));
@@ -64,18 +65,26 @@ static partial class ApiEndpointMappings
             await codec.WriteApiFramesAsync(context, received.Result, received.Present,
                 Array.Empty<object?>(), Array.Empty<object?>(), "five-frame");
         });
-        app.MapMethods("/localap/api/Circles/Invited", new[] { "GET", "POST" }, async context =>
-        {
-            await logger.LogAsync("circles-invited");
-            await codec.WriteApiResultAsync(context, Array.Empty<object?>(), "five-frame");
-        });
+        app.MapMethods("/localap/api/Circles/Invited",new[] {"GET","POST"},async context=>
+            await codec.WriteApiResultAsync(context,await state.UserDataService.GetInvitedCirclesAsync(context),"five-frame"));
         app.MapMethods("/localap/api/Circles/RecommendUsers", new[] { "GET", "POST" }, async context =>
             await codec.WriteApiResultAsync(context,
                 await state.UserDataService.GetCircleRecommendedUsersAsync(context,context.Request.Query["circleId"].ToString()),"five-frame"));
+        foreach (var period in new[] { "Daily", "Weekly", "Monthly" })
+        {
+            var currentPeriod = period;
+            app.MapMethods($"/localap/api/Circles/Ranking/{period}", new[] { "GET", "POST" }, async context =>
+            {
+                var ranking = await state.UserDataService.GetCircleRankingAsync(context, currentPeriod);
+                await logger.LogAsync($"circles-ranking period={currentPeriod} count={((object?[])ranking[0]!).Length}");
+                await codec.WriteApiResultAsync(context, ranking, "lz4-five-frame");
+            });
+        }
+
         app.MapMethods("/localap/api/Circles/GetSupportAndTheaterLevelInformation", new[] { "GET", "POST" }, async context =>
         {
             await logger.LogAsync("circles-get-support-and-theater-level-information");
-            await codec.WriteApiResultAsync(context, GameResults.CircleSupportAndTheaterLevelInformation(), "lz4-five-frame");
+            await codec.WriteApiResultAsync(context, await state.UserDataService.GetCircleSupportAsync(context), "lz4-five-frame");
         });
     }
 }

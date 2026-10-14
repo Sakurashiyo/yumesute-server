@@ -107,7 +107,7 @@
 
 ## 社团剧场体力
 
-`user_circle_memberships.stamina_last_received_at` 记录每位成员上次领取剧场体力的时间。新成员首次领取按 300 点上限计算；之后按每小时 4.17 点累计、最多 300 点。领取时锁定成员行，在同一事务中更新时间与玩家体力，重复或并发请求不会重复发放。
+`user_circle_memberships.stamina_last_received_at` 记录每位成员上次领取剧场体力的时间。新成员首次领取按 300 点上限计算；之后按 `CircleTheaterLevelMaster.StaminaBaseValue × 完整小时 / 24` 向下取整累计、最多 300 点。剧场等级为四个剧团支援等级之和。领取按账号、钱包、社团、成员顺序加锁，在同一事务中更新时间与玩家体力，重复或并发请求不会重复发放。
 
 `system_circles.is_publish_ranking` 保存社团排行榜公开开关，仅会长可通过社团接口修改。支援剧团等级上限初始为 10，对应主数据首个可解锁上限 11；客户端不应看到 0/0 MAX。
 
@@ -188,3 +188,13 @@ union130 的 `LiveAchievement` 按存档计算 `[userId, 已购买OLIVIER数量,
 稽古开始快照新增第三项卡片战力映射 `[LessonParty, Cards, StatusByCardId]`，卡片 ID 以十进制字符串作为映射键。旧版两项快照在读取未完成场次时补存第三项，不更改次数或奖励。战力采用解包 CharacterMaster、CharacterLevelMaster、CharacterBloomBonusGroupMaster、EffectMaster 与 CharacterStarRankMaster；星章加成为 `min(当前星章加成, 高分满足的最大加成)`，高分缺省为 0 时上限 2.5%。
 
 剧情进度：`user_episode_read_states` 一条记录表示已读，key95第二字段为 `has_read_all`（非 is_new）。新增列默认false，ReadAll只能升级为true；重复Read不降级。前置剧情、一次性奖励和已读写入在玩家状态行锁与同一事务内处理。主数据奖励类型1/13发放道具/免费宝石，3海报持有状态保留旧版 raw 存档编号28，读取时映射为客户端 Poster union11（客户端28实际为 AccessoryEffectMaster），不批量改写存档。8铭牌保存在45。两份宝石余额同步，重登录包含11与95。旧教程已读记录不重复补发奖励。
+
+## 社团管理与支援
+
+`system_circle_entries` 保存邀请/申请、处理状态与客户端操作编号，重复待处理请求返回原编号；拒绝或取消后重新提交生成新编号，旧审批不能作用于新请求。入会、审批、踢出、退会、权限移交与解散复用账号和社团行锁，保证成员唯一性、权限与人数上限。
+
+`system_circle_support` 保存四个剧团的等级、当前积分、等级上限和共同捐赠金币；`system_circle_support_donations` 保存材料进度。捐赠按已发布上限主数据扣款，超额部分保留在玩家钱包，满足金币及全部材料条件后解放上限并清零当前捐赠进度。钱包、材料与共同进度在同一事务内提交。
+
+`user_circle_support_points` 按玩家、社团、日本时间 05:00 刷新日保存贡献。日/周/月排行只查询当前玩家所属社团的现有成员，离线成员同样参与，按周期累计积分排名。演出贡献产出公式尚未还原，普通演出结算暂不写入贡献；排行榜不会把玩家等级或全服成绩冒充贡献积分。
+
+`user_circle_memberships.support_company` 保存支援选择，0 表示指定なし，1–4 为四个剧团；`authority_update_type` 保存权限变更提示。`user_profiles.is_public_activity_log` 控制个人非管理活动日志公开性。

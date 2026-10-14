@@ -160,10 +160,10 @@ sealed partial class UserDataService
         var userId = await RequireAuthenticatedUserAsync(context);
         await using var connection = await database.OpenConnectionAsync();
         string? circleId;
-        int authority = 0;
+        int authority = 0, supportCompany = 0, authorityUpdate = 0;
         DateTime staminaLastReceivedAt = CircleUnsetAt;
         await using (var command = new NpgsqlCommand("""
-            select circle_id, authority, stamina_last_received_at from user_circle_memberships where "userId" = $1
+            select circle_id, authority, stamina_last_received_at, support_company, authority_update_type from user_circle_memberships where "userId" = $1
             """, connection))
         {
             command.Parameters.AddWithValue(userId);
@@ -172,6 +172,8 @@ sealed partial class UserDataService
             if (circleId is not null)
             {
                 authority = reader.GetInt32(1);
+                supportCompany = reader.GetInt32(3);
+                authorityUpdate = reader.GetInt32(4);
                 if (!reader.IsDBNull(2)) staminaLastReceivedAt = reader.GetDateTime(2);
             }
         }
@@ -182,7 +184,8 @@ sealed partial class UserDataService
         var p = circle.Payload;
         return new object?[] { circle.Id, p.Name, p.Comment, p.Start, p.End, p.Entry, circle.Count, authority,
             CircleProtocol.SearchSuccess, circle.Banner, p.Company, p.CharacterBase,
-            GameResults.CircleSupportAndTheaterLevelInformation(), 0, 0, circle.IsPublishRanking, staminaLastReceivedAt, 0 };
+            await ReadCircleSupportAsync(connection,circle.StorageId), supportCompany,
+            await ReadCircleDailyPointsAsync(connection,userId,circle.StorageId), circle.IsPublishRanking, staminaLastReceivedAt, authorityUpdate };
     }
 
     public async Task<object?[]> GetCircleMembersAsync(string circleId)
@@ -210,28 +213,8 @@ sealed partial class UserDataService
         return new object?[] { members.ToArray(), CircleProtocol.SearchSuccess, circle.Banner };
     }
 
-    public async Task<object?[]> GetCircleJoinRequestsAsync(HttpContext context, string circleId)
-    {
-        var userId = await RequireAuthenticatedUserAsync(context);
-        await using var connection = await database.OpenConnectionAsync();
-        var circle = await ReadCircleAsync(connection, circleId);
-        if (circle is null) return new object?[] { Array.Empty<object?>(), CircleProtocol.DataNotFound, null };
-        await using var command = new NpgsqlCommand("""
-            select exists(select 1 from user_circle_memberships
-              where circle_id = $1 and "userId" = $2 and authority >= 2)
-            """, connection);
-        command.Parameters.AddWithValue(circle.StorageId);
-        command.Parameters.AddWithValue(userId);
-        if (await command.ExecuteScalarAsync() is not true)
-        {
-            context.RequestServices.GetRequiredService<ILogger<UserDataService>>()
-                .LogWarning("社团申请查询拒绝 userId={UserId} circleId={CircleId} errorCode={ErrorCode}",
-                    userId, circle.Id, CircleProtocol.RequestIllegal);
-            return new object?[] { Array.Empty<object?>(), CircleProtocol.RequestIllegal, null };
-        }
-        // 尚无入会申请写入功能，空列表表示无待处理申请，不伪造申请或审批成功。
-        return new object?[] { Array.Empty<object?>(), CircleProtocol.SearchSuccess, circle.Banner };
-    }
+    public Task<object?[]> GetCircleJoinRequestsAsync(HttpContext context, string circleId) =>
+        ReadCircleEntriesAsync(context,circleId,false);
 
     static readonly DateTime CircleUnsetAt = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
     sealed record CircleRow(string Id, long Owner, CircleProtocol.Payload Payload, object? Banner,

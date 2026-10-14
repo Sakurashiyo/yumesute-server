@@ -164,7 +164,7 @@ sealed partial class SocialRealtimeService
     }
     static async Task<object?[]> ActivitiesAsync(NpgsqlConnection db, string circle)
     {
-        await using var command = new NpgsqlCommand("select public_id,user_name,character_id,log_type,log_value,id,logged_at,display_awakening from circle_realtime_activities where circle_id=$1 order by id desc limit 100", db);
+        await using var command = new NpgsqlCommand("select public_id,user_name,character_id,log_type,log_value,id,logged_at,display_awakening from circle_realtime_activities a where circle_id=$1 and (log_type in (1,2,3) or exists(select 1 from user_profiles p where p.\"userId\"=a.user_id and p.is_public_activity_log)) order by id desc limit 100", db);
         command.Parameters.AddWithValue(circle);
         var rows = new List<object?>();
         await using var reader = await command.ExecuteReaderAsync();

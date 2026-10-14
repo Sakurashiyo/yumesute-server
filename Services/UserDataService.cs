@@ -1163,7 +1163,8 @@ sealed partial class UserDataService
                    show_home_character,
                    name_base_color_master_id,
                    name_color_master_id,
-                   home_skin_master_id
+                   home_skin_master_id,
+                   is_public_activity_log
             from user_profiles
             where "userId" = $1
             """,
@@ -1192,7 +1193,7 @@ sealed partial class UserDataService
             null,
             GetNullableInt64(reader, 13) ?? DefaultCharacterMasterId,
             reader.GetBoolean(14),
-            reader.GetBoolean(15),
+            reader.GetBoolean(19),
             // These resources are loaded while the title flow transitions to
             // Home.  Legacy local rows used zero/guessed IDs which serialize
             // correctly but do not exist in the 2.31.0 master database.

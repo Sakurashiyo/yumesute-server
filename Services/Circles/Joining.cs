@@ -57,6 +57,8 @@ sealed partial class UserDataService
             status = CircleProtocol.JoinSuccess;
         }
         else if (status == CircleProtocol.PreRequestSuccess) status = CircleProtocol.RequestIllegal;
+        if (status == CircleProtocol.JoinSuccess)
+            await ExecuteAsync(connection,transaction,"update system_circle_entries set status=2 where \"userId\"=$1 and status=0",userId);
         var present = status == CircleProtocol.JoinSuccess
             ? new object?[] { DataObject(0, await ReadUserAsync(connection, userId)) } : Array.Empty<object?>();
         await transaction.CommitAsync();

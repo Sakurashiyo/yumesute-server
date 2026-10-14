@@ -12,6 +12,25 @@ static class CircleProtocol
     public const int DataNotFound = 19;
     public const int SearchSuccess = 20;
     public const int InvalidParameter = 25;
+    public const int AlreadyInvite = 5;
+    public const int AlreadyRequest = 7;
+    public const int InviteSuccess = 8;
+    public const int RequestSuccess = 10;
+    public const int ApproveSuccess = 11;
+    public const int ExpulsionSuccess = 15;
+    public const int ResignationSuccess = 16;
+    public const int ReleaseSuccess = 17;
+    public const int CancelSuccess = 21;
+    public const int RejectSuccess = 22;
+    public const int AuthorityPermissionDenied = 1;
+    public const int DeputyLeaderFull = 2;
+    public const int AuthorityChanged = 3;
+    public const int LeaderChanged = 4;
+    public const int AuthorityDataNotFound = 5;
+    public const int DonationSuccess = 0;
+    public const int DonationExceeded = 1;
+    public const int DonationError = 99;
+    public const string InvalidSearch = "CIRCLE_SEARCH_INVALID_PAYLOAD";
     public const string Unauthorized = AccountErrors.Unauthorized;
 
     public sealed record Payload(string Name, string Comment, int Start, int End, int Entry, int Member, long? Company, long? CharacterBase);

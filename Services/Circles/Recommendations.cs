@@ -32,10 +32,7 @@ sealed partial class UserDataService
     {
         var mine = await GetMyCircleAsync(context);
         if (mine[0] is not string circleId) return new object?[] { Array.Empty<object?>(), CircleProtocol.DataNotFound, null };
-        var authorized = await GetCircleJoinRequestsAsync(context, circleId);
-        if (Convert.ToInt32(authorized[1]) != CircleProtocol.SearchSuccess) return authorized;
-        // 尚无社团邀请写入；不能把推荐玩家误报为已邀请。
-        return new object?[] { Array.Empty<object?>(), CircleProtocol.SearchSuccess, authorized[2] };
+        return await ReadCircleEntriesAsync(context,circleId,true);
     }
 
     public async Task<object?[]> SearchCircleUserAsync(HttpContext context, string targetUserId)

@@ -64,5 +64,6 @@ static class CircleSchema
             """, connection, transaction);
         await command.ExecuteNonQueryAsync();
         await transaction.CommitAsync();
+        await CircleOperationsSchema.MigrateAsync(connection);
     }
 }
