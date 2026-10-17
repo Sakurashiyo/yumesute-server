@@ -2,7 +2,13 @@ static partial class ApiEndpointMappings
 {
     static void MapGachaEndpoints(WebApplication app,LocalServerState state,ApiCodec codec,LocalRequestLogger logger)
     {
-        app.MapGet("/localap/api/Gachas",context=>codec.WriteApiResultAsync(context,GameResults.GachaListResult()));
+        app.MapGet("/localap/api/Gachas",async context=>
+        {
+            var operations=await state.GameOperations.GetAsync();
+            var available = GachaRules.AllPools.Where(pool => HistoricalGachaResources.Available(pool,state.Config.ResourcesRoot)).Select(pool => pool.Id).ToHashSet();
+            var pools=GameResults.GachaListResult().Cast<object?[]>().Where(row=>operations.Configuration.Gachas[Convert.ToInt64(row[0])] && available.Contains(Convert.ToInt64(row[0]))).ToArray();
+            await codec.WriteApiResultAsync(context,pools);
+        });
         app.MapGet("/localap/api/Gachas/CharacterLineup/{gachaMasterId:long}",(HttpContext context,long gachaMasterId)=>Run(context,"gacha-lineup",async ()=>await codec.WriteApiResultAsync(context,GameResults.CharacterLineupResult(gachaMasterId))));
         app.MapGet("/localap/api/Gachas/PosterLineup/{gachaMasterId:long}",(HttpContext context,long gachaMasterId)=>Run(context,"gacha-lineup",async ()=>await codec.WriteApiResultAsync(context,GameResults.PosterLineupResult(gachaMasterId))));
         app.MapMethods("/localap/api/Gachas/GetGachaHistories",["GET","POST"],context=>Run(context,"gacha-history",async ()=>await codec.WriteApiResultAsync(context,await state.UserDataService.GetGachaHistoriesAsync(context))));

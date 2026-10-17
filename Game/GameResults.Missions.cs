@@ -122,25 +122,4 @@ static partial class GameResults
         };
     }
 
-    public static object?[] MissionPassReceiveRewardsResult(long missionPassId)
-    {
-        return new object?[]
-        {
-            new object?[]
-            {
-                new object?[] { 1, 130021, 500, null, null, null, false }
-            },
-            5
-        };
-    }
-
-    public static object?[] MissionPassReceiveRewardsPresentData(long missionPassId)
-    {
-        return new object?[]
-        {
-            new object?[] { 97, new object?[] { Random.Shared.Next(8000000, 8999999), 0, missionPassId, false, 1, 0, false, 1, 0, 1, 0 } },
-            new object?[] { 27, new object?[] { Random.Shared.Next(151000000, 151999999), 130021, 722 } }
-        };
-    }
-
 }

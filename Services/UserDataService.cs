@@ -18,23 +18,13 @@ sealed partial class UserDataService
     const long DefaultHomeBgmDetailMasterId = 1001L;
     const long DefaultPartyId = 1L;
     const long DefaultPartySlotId = 1L;
-    static readonly TimeSpan LocalTimeOffset = TimeSpan.FromHours(8);
-
-    static readonly LoginBonusReward[] LoginBonusRewards =
-    {
-        new(168, "「最終章」追加記念アクターガチャ10連チケットログインボーナス", 1, 210446, 1, 10, false, 30, 2, new DateTimeOffset(2026, 7, 21, 1, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 8, 10, 13, 0, 0, LocalTimeOffset)),
-        new(169, "「最終章」追加記念ポスターガチャ10連チケットログインボーナス", 1, 211432, 1, 10, false, 40, 2, new DateTimeOffset(2026, 7, 21, 1, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 8, 10, 13, 0, 0, LocalTimeOffset)),
-        new(170, "「最終章」追加記念ログインボーナス", 13, 0, 1000, 7, false, 50, 2, new DateTimeOffset(2026, 7, 21, 1, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 8, 10, 13, 0, 0, LocalTimeOffset)),
-        new(179, "3rd Anniversaryカウントダウンログインボーナス", 1, 210001, 3, 1, false, 1, 2, new DateTimeOffset(2026, 7, 22, 8, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 7, 23, 8, 0, 0, LocalTimeOffset)),
-        new(10006, "ログインボーナス", 13, 0, 300, 15, true, 1000, 1, new DateTimeOffset(2026, 7, 17, 23, 0, 0, LocalTimeOffset), DateTimeOffset.MaxValue),
-        new(35013, "最終章 ログインボーナス", 1, 111103, 5, 7, false, 100, 2, new DateTimeOffset(2026, 7, 21, 1, 0, 0, LocalTimeOffset), new DateTimeOffset(2026, 7, 31, 13, 0, 0, LocalTimeOffset))
-    };
-
     readonly PostgresDatabase database;
+    readonly string? gachaResourcesRoot;
 
-    public UserDataService(PostgresDatabase database)
+    public UserDataService(PostgresDatabase database, LocalConfig? config = null)
     {
         this.database = database;
+        gachaResourcesRoot = config?.ResourcesRoot;
     }
 
     public async Task<object?[]> GetUserDataAsync(HttpContext context)
@@ -70,6 +60,8 @@ sealed partial class UserDataService
         presentData.AddRange((await ReadMissionsAsync(connection, userId.Value)).Select(row => DataObject(48, row)));
         presentData.Add(DataObject(0, await ReadUserAsync(connection, userId.Value)));
         presentData.Add(DataObject(109, await ReadDailyLimitAsync(connection, userId.Value)));
+        presentData.Add(DataObject(97, MissionPassData(userId.Value, await ReadMissionPassAsync(connection, userId.Value),
+            (await GameOperationsService.ReadAsync(connection)).Configuration.MissionPass)));
         return presentData.ToArray();
     }
 
@@ -573,6 +565,7 @@ sealed partial class UserDataService
         {
             var name = await ReadUserNameAsync(connection, transaction, userId) ?? "LocalPlayer";
             await InsertDefaultUserDataAsync(connection, transaction, userId, name);
+            await EnsureMissionPassAsync(connection, transaction, userId);
             await NormalizeRankAsync(connection, transaction, userId);
             await NormalizeCharacterGrowthAsync(connection, transaction, userId);
             await SynchronizeMusicUnlocksAsync(connection, transaction, userId);
@@ -646,7 +639,7 @@ sealed partial class UserDataService
         var gameHintReads = await ReadGameHintReadsAsync(connection, userId);
         var shopLastViews = await ReadShopLastViewsAsync(connection, userId);
         var episodeReadStates = await ReadEpisodeReadStatesAsync(connection, userId);
-        var playerSetting = await ReadPlayerSettingAsync(connection, userId);
+        var missionPass = await ReadMissionPassAsync(connection, userId);
         var restriction = await ReadRestrictionAsync(connection, userId);
         var albums = await ReadAlbumsAsync(connection, userId);
         var photoRecords = await ReadPhotoRecordsAsync(connection, userId);
@@ -678,7 +671,8 @@ sealed partial class UserDataService
         result.AddRange(dugongRunStates.Select(value => DataObject(177, value)));
         result.AddRange(characterResourceProgress.Select(value => DataObject(96, value)));
         result.Add(DataObject(94, notification));
-        result.Add(DataObject(97, playerSetting));
+        result.Add(DataObject(97, MissionPassData(userId, missionPass,
+            (await GameOperationsService.ReadAsync(connection)).Configuration.MissionPass)));
         result.AddRange(missions.Select(value => DataObject(48, value)));
         result.Add(DataObject(109, dailyLimit));
         result.Add(DataObject(128, currency));
@@ -935,16 +929,10 @@ sealed partial class UserDataService
             });
         }
 
-        // 旧存档的默认队伍可能仍保存预设 ID，同步时对齐数据库卡片 ID。
-        var characterAliases = Enumerable.Range(0, bootstrapPartyCharacters.Length)
-            .ToDictionary(index => UserScopedId(userId, 1001 + index), index => bootstrapPartyCharacters[index]);
-        foreach (var item in result.OfType<object?[]>())
-        {
-            if (item[0] is not (7 or 167) || item[1] is not object?[] slot || slot.Length <= 3 || slot[3] is null) continue;
-            if (characterAliases.TryGetValue(Convert.ToInt64(slot[3]), out var actualId)) slot[3] = actualId;
-        }
+        ResolvePartyCharacterAliases(userId,
+            result.OfType<object?[]>().Where(item => item[0] is 7 or 167).Select(item => (object?[])item[1]!),
+            result.OfType<object?[]>().Where(item => item[0] is 4).Select(item => (object?[])item[1]!));
 
-        AddIfMissing(97, BuildInitialPlayerSetting(userId));
         AddIfMissing(109, new object?[] { UserScopedId(userId, 10902), 0, 0, CurrentDailyResetBoundaryUtc(DateTimeOffset.UtcNow).UtcDateTime, 0 });
         AddIfMissing(148, new object?[] { userId, null, true });
         AddIfMissing(174, new object?[] { 1, "アルバム1", 1 });
@@ -958,11 +946,6 @@ sealed partial class UserDataService
     static object?[] BuildInviteCode(long userId)
     {
         return new object?[] { 0, $"LOCAL{userId % 100000:D5}", false };
-    }
-
-    static object?[] BuildInitialPlayerSetting(long userId)
-    {
-        return new object?[] { UserScopedId(userId, 9701), 0, 36, false, null, null, false, null, null, null, null };
     }
 
     static string DataObjectIdentity(int unionKey, object?[] value)
@@ -1314,7 +1297,8 @@ sealed partial class UserDataService
     {
         await using var command = new NpgsqlCommand(
             """
-            select *
+            select id, character_master_id, level, exp, awakening, character_base_id,
+                   skill_level, extra_1, extra_2, is_new, display_awakening_status
             from user_character_cards
             where "userId" = $1
             order by id
@@ -1326,24 +1310,7 @@ sealed partial class UserDataService
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            result.Add(new object?[]
-            {
-                reader.GetInt64(reader.GetOrdinal("id")),
-                reader.GetInt64(reader.GetOrdinal("character_master_id")),
-                reader.GetInt32(reader.GetOrdinal("level")),
-                reader.GetInt32(reader.GetOrdinal("exp")),
-                0,
-                reader.GetInt32(reader.GetOrdinal("awakening")),
-                reader.GetInt64(reader.GetOrdinal("character_base_id")),
-                reader.GetInt32(reader.GetOrdinal("skill_level")),
-                reader.GetInt32(reader.GetOrdinal("extra_1")),
-                reader.GetInt32(reader.GetOrdinal("extra_2")),
-                false,
-                null,
-                0,
-                1,
-                false
-            });
+            result.Add(ReadUpdatedCharacter(reader));
         }
         return result;
     }
@@ -1915,35 +1882,6 @@ sealed partial class UserDataService
         return result;
     }
 
-    static async Task<object?[]> ReadPlayerSettingAsync(NpgsqlConnection connection, long userId)
-    {
-        await using var command = new NpgsqlCommand(
-            """
-            select id, display_quality, download_category, is_push_enabled, push_start_at, push_end_at, is_live_push_enabled
-            from user_player_settings
-            where "userId" = $1
-            """,
-            connection);
-        command.Parameters.AddWithValue(userId);
-
-        await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync()) return BuildInitialPlayerSetting(userId);
-        return new object?[]
-        {
-            reader.GetInt64(0),
-            reader.GetInt32(1),
-            reader.GetInt32(2),
-            reader.GetBoolean(3),
-            GetNullableDateTime(reader, 4),
-            GetNullableDateTime(reader, 5),
-            reader.GetBoolean(6),
-            null,
-            null,
-            null,
-            null
-        };
-    }
-
     static async Task<object?[]> ReadRestrictionAsync(NpgsqlConnection connection, long userId)
     {
         await using var command = new NpgsqlCommand(
@@ -2168,18 +2106,6 @@ sealed partial class UserDataService
         DateTime CreatedAt,
         DateTime? ExpiresAt);
 
-    sealed record LoginBonusReward(
-        long Id,
-        string Title,
-        int ThingType,
-        long MasterId,
-        int Quantity,
-        int Days,
-        bool IsLoop,
-        int DisplayOrder,
-        int DisplayCategory,
-        DateTimeOffset StartAt,
-        DateTimeOffset EndAt);
 }
 
 

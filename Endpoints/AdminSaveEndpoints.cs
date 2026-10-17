@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text.Json;
 using Npgsql;
 
@@ -13,17 +12,7 @@ static class AdminSaveEndpoints
         {
             var context = invocation.HttpContext;
             var request = context.Request;
-            var address = context.Connection.RemoteIpAddress;
-            if (address is null || !IPAddress.IsLoopback(address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address) ||
-                request.Host.Host.ToLowerInvariant() is not ("localhost" or "127.0.0.1" or "::1" or "[::1]"))
-                return Results.Json(new { code = AdminSaveErrors.Forbidden, message = "存档管理仅允许本机访问" }, statusCode: 403);
-            context.Response.Headers.CacheControl = "no-store";
-            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
-            if (HttpMethods.IsPost(request.Method) &&
-                (request.Headers.Origin != $"{request.Scheme}://{request.Host}" ||
-                 !request.HasJsonContentType() || request.Headers["Sec-Fetch-Site"] == "cross-site"))
-                return Results.Json(new { code = AdminSaveErrors.Forbidden, message = "请从本机管理页面提交" }, statusCode: 403);
+            if (LocalAdminAccess.Check(context, AdminSaveErrors.Forbidden) is { } denied) return denied;
             try { return await next(invocation); }
             catch (AdminSaveException error)
             {

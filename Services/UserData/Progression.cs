@@ -5,7 +5,7 @@ sealed partial class UserDataService
 {
     public sealed record LiveSettlement(object?[] Result, object?[] Present);
 
-    public async Task RegisterLiveStartAsync(HttpContext context, object? payload, bool validateMusicUnlock = true)
+    public async Task<object?[]?> RegisterLiveStartAsync(HttpContext context, object? payload, bool validateMusicUnlock = true, bool buildUnit = false)
     {
         if (payload is not object?[] start || start.Length < 8 ||
             !long.TryParse(start[1]?.ToString(), out var chartId) || !PlayerProgressionRules.Charts.ContainsKey(chartId) ||
@@ -14,13 +14,16 @@ sealed partial class UserDataService
         var userId = await GetCurrentUserIdAsync(context) ?? throw new BadHttpRequestException("ACCOUNT_UNAUTHORIZED", 401);
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await LockLessonUserAsync(connection, transaction, userId);
         var missionParty = await ReadMissionPartyAsync(connection,userId,GetLong(start,0) ?? 0);
         if (missionParty.Length == 0 && GetLong(start,0) is > 0)
             context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogWarning(
                 "演出缺少可持久化角色编队 userId={UserId} partyId={PartyId} operation={Operation}",userId,GetLong(start,0),"character-mission-snapshot");
-        await using var transaction = await connection.BeginTransactionAsync();
-        await LockLessonUserAsync(connection, transaction, userId);
         if (validateMusicUnlock) await ValidateMusicDifficultyAsync(connection, userId, PlayerProgressionRules.Charts[chartId], auto);
+        var unit = buildUnit
+            ? await ReadLiveUnitAsync(connection, transaction, userId, GetLong(start, 0) ?? 0, chartId, auto)
+            : null;
         await using var command = new NpgsqlCommand(
             """
             insert into user_live_sessions ("userId", live_master_id, is_auto, use_stamina, character_mission_party)
@@ -36,6 +39,10 @@ sealed partial class UserDataService
         command.Parameters.AddWithValue(MsgPack.Encode(missionParty));
         await command.ExecuteNonQueryAsync();
         await transaction.CommitAsync();
+        if (unit is not null) context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
+            "生成演出编队 operation=live-unit userId={UserId} partyId={PartyId} chartId={ChartId} totalStatus={TotalStatus} outcome=success",
+            userId, GetLong(start, 0), chartId, unit[5]);
+        return unit;
     }
 
     static async Task NormalizeRankAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId)
@@ -85,6 +92,7 @@ sealed partial class UserDataService
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
+        var operations = await GameOperationsService.ReadAsync(connection, transaction, lockForUse: true);
         await LockLessonUserAsync(connection, transaction, userId);
         // 两种演出共用结束接口，按最近一次开始的会话分流，不能命中历史普通演出。
         await using (var mode = new NpgsqlCommand(
@@ -131,10 +139,12 @@ sealed partial class UserDataService
             missionParty = reader.IsDBNull(5) ? Array.Empty<object?>() : (object?[])MsgPack.Decode(reader.GetFieldValue<byte[]>(5))!;
         }
         var chart = PlayerProgressionRules.Charts[chartId];
+        if (!auto) cleared = FinishLifeIsPositive(finish) && cleared;
         if (!auto) await RecordCharacterMissionLiveAsync(connection,transaction,userId,missionParty,finish,cleared);
         var state = await ReadRankStateAsync(connection, transaction, userId);
-        var gain = cleared && useStamina ? CapturedLiveExpGain : 0;
-        var coins = cleared ? CapturedLiveCoinGain : 0;
+        // 完成演出即结算消耗与奖励；通关灯、rating 和通关进度仍按通关状态判断。
+        var gain = useStamina ? CapturedLiveExpGain : 0;
+        var coins = CapturedLiveCoinGain;
         var next = PlayerProgressionRules.Advance(state.Rank, state.Exp, gain, state.Limit);
         var beforeRating = await ReadPlayerRatingAsync(connection, userId);
         decimal achievement = 0, notation = 0;
@@ -147,8 +157,7 @@ sealed partial class UserDataService
             achievement = PlayerProgressionRules.Achievement(judges);
             lamp = cleared ? judges.Where(pair => pair.Key < 5).Sum(pair => pair.Value) == 0 ? 6 :
                 judges.Where(pair => pair.Key <= 2).Sum(pair => pair.Value) == 0 ? 2 : 1 : 0;
-            var alive = FinishLifeIsPositive(finish);
-            notation = cleared && alive && chart.Difficulty <= 4 ? PlayerProgressionRules.NotationRate(chart.Level, achievement) : 0;
+            notation = cleared && chart.Difficulty <= 4 ? PlayerProgressionRules.NotationRate(chart.Level, achievement) : 0;
             await using (var previous = new NpgsqlCommand(
                 "select achievement_rate, notation_rate, clear_lamp from user_live_play_results where \"userId\" = $1 and live_master_id = $2 and difficulty = $3", connection, transaction))
             {
@@ -156,16 +165,17 @@ sealed partial class UserDataService
                 await using var reader = await previous.ExecuteReaderAsync();
                 if (await reader.ReadAsync()) { bestAchievement = reader.GetDouble(0); bestNotation = reader.GetDouble(1); beforeLamp = reader.GetInt32(2); }
             }
-            await SaveChartResultAsync(connection, transaction, userId, chart, score, achievement, notation, lamp, chart.Difficulty==5 ? cleared && alive : cleared);
+            await SaveChartResultAsync(connection, transaction, userId, chart, score, achievement, notation, lamp, cleared);
         }
         await ExecuteAsync(connection, transaction,
             """
             update user_game_states set rank = $2, exp = $3, max_stamina = $4,
               stamina = greatest(stamina - $5, 0) + $6, coin = coin + $7, updated_at = now()
             where "userId" = $1
-            """, userId, next.Rank, next.Exp, next.MaxStamina, cleared && useStamina ? 1 : 0, next.StaminaRecovery, coins);
+            """, userId, next.Rank, next.Exp, next.MaxStamina, useStamina ? 1 : 0, next.StaminaRecovery, coins);
         await ExecuteAsync(connection, transaction, "update user_item_currencies set coin = coin + $2 where \"userId\" = $1", userId, coins);
-        var rewards = cleared ? CapturedLiveItemRewards : Array.Empty<(long ItemMasterId, int Quantity)>();
+        var rewards = CapturedLiveItemRewards.Where(reward => reward.ItemMasterId != MissionPassRules.PointItemId
+            || operations.Configuration.MissionPass.IsOpen(DateTimeOffset.UtcNow)).ToArray();
         foreach (var reward in rewards) await UpsertItemQuantityAsync(connection, transaction, userId, reward.ItemMasterId, reward.Quantity);
         await RecordDifficultyUnlockAsync(connection,transaction,userId,chart,finish,auto,cleared,achievement);
         await SynchronizeMusicUnlocksAsync(connection,transaction,userId);
@@ -186,7 +196,6 @@ sealed partial class UserDataService
         result[3] = new object?[] { state.Rank, next.Rank, state.Exp, next.Exp, gain, state.Stamina };
         result[5] = lamp; result[6] = auto ? 0 : PlayerProgressionRules.Grade(achievement);
         result[8] = false; result[13] = (double)achievement; result[20] = beforeLamp;
-        if (!cleared) result[23] = Array.Empty<object?>();
         var present = new List<object?> { DataObject(0, await ReadUserAsync(connection, userId)), DataObject(1, await ReadProfileAsync(connection, userId)), DataObject(128, await ReadCurrencyAsync(connection, userId)) };
         if (!auto)
         {

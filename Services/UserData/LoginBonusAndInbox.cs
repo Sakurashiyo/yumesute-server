@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Npgsql;
+using LoginBonusReward = LoginBonusRules.Reward;
 
 sealed partial class UserDataService
 {
@@ -11,85 +12,63 @@ sealed partial class UserDataService
         await EnsureDefaultUserDataAsync(userId.Value);
 
         var now = DateTimeOffset.UtcNow;
-        var activeRewards = LoginBonusRewards
-            .Where(reward => reward.StartAt <= now && now < reward.EndAt)
-            .ToArray();
-        if (activeRewards.Length == 0)
-        {
-            return new LoginBonusReceiveResult(Array.Empty<object?>(), Array.Empty<object?>());
-        }
-
         var windowStartUtc = CurrentDailyResetBoundaryUtc(now).UtcDateTime;
         var windowKey = new DateTimeOffset(windowStartUtc).ToOffset(JapanStandardTimeOffset).ToString("yyyyMMdd");
-
         await using var connection = await database.OpenConnectionAsync();
-
-        var bootstrapKeys = activeRewards.Select(reward => $"login-bonus-{windowKey}-{reward.Id}").ToArray();
-        var currentLoginCount = 0;
         await using var transaction = await connection.BeginTransactionAsync();
-        // 条件更新同时锁定领取状态，重复或并发请求不能再次发奖。
-        await using (var claim = new NpgsqlCommand(
-            """
-            update user_login_bonus_states
-            set current_count = current_count + 1, total_count = total_count + 1,
-                shown_at = $3, status = 1, updated_at = now()
-            where "userId" = $1 and (status <> 1 or shown_at < $2)
-            returning current_count
-            """, connection, transaction))
+        var operations = await GameOperationsService.ReadAsync(connection, transaction, lockForUse: true);
+        await LockLessonUserAsync(connection, transaction, userId.Value);
+        var bonuses = new List<object?>();
+        var bootstrapKeys = new List<string>();
+        foreach (var source in LoginBonusRules.Rewards)
         {
-            claim.Parameters.AddWithValue(userId.Value);
-            claim.Parameters.AddWithValue(windowStartUtc);
-            claim.Parameters.AddWithValue(now.UtcDateTime);
-            var claimedCount = await claim.ExecuteScalarAsync();
-            if (claimedCount is null)
-                return new LoginBonusReceiveResult(Array.Empty<object?>(), Array.Empty<object?>());
-            currentLoginCount = Convert.ToInt32(claimedCount);
-        }
-        try
-        {
-            foreach (var reward in activeRewards)
+            var setting = operations.Configuration.LoginBonuses[source.Id];
+            if (!setting.IsOpen(now)) continue;
+            var reward = source with { StartAt = setting.StartsAt, EndAt = setting.EndsAt ?? MissionPassRules.PermanentEnd };
+            var count = 0;
+            await using (var history = new NpgsqlCommand("""
+                select count(*)::integer from user_login_bonus_claims where "userId"=$1 and login_bonus_id=$2
+                """, connection, transaction))
             {
-                var bootstrapKey = $"login-bonus-{windowKey}-{reward.Id}";
-                var payload = JsonSerializer.Serialize(new
-                {
-                    bootstrapKey,
-                    ThingType = reward.ThingType,
-                    MasterId = reward.MasterId,
-                    Quantity = reward.Quantity,
-                    Message = $"{reward.Title}の報酬です"
-                });
-
-                await ExecuteAsync(
-                    connection,
-                    transaction,
-                    """
-                    insert into user_item_inbox_packages ("userId", payload, expires_at)
-                    select $1, $2::jsonb, now() + interval '30 days'
-                    where not exists (
-                      select 1
-                      from user_item_inbox_packages
-                      where "userId" = $1
-                        and payload ->> 'bootstrapKey' = $3
-                    )
-                    """,
-                    userId.Value,
-                    payload,
-                    bootstrapKey);
+                history.Parameters.AddWithValue(userId.Value); history.Parameters.AddWithValue(reward.Id);
+                count = (int)(await history.ExecuteScalarAsync())!;
             }
-
-            await transaction.CommitAsync();
+            if (!reward.IsLoop && count >= reward.Days) continue;
+            // 各活动按游戏日独立幂等，当天新开启的活动不会被常规签到挡住。
+            await using var claim = new NpgsqlCommand("""
+                insert into user_login_bonus_claims("userId",login_bonus_id,game_day) values($1,$2,$3)
+                on conflict ("userId",login_bonus_id,game_day) do nothing returning login_bonus_id
+                """, connection, transaction);
+            claim.Parameters.AddWithValue(userId.Value); claim.Parameters.AddWithValue(reward.Id);
+            claim.Parameters.AddWithValue(DateOnly.ParseExact(windowKey, "yyyyMMdd"));
+            if (await claim.ExecuteScalarAsync() is null) continue;
+            var bootstrapKey = $"login-bonus-{windowKey}-{reward.Id}";
+            var payload = JsonSerializer.Serialize(new
+            {
+                bootstrapKey, ThingType = reward.ThingType, MasterId = reward.MasterId,
+                Quantity = reward.Quantity, Message = $"{reward.Title}の報酬です"
+            });
+            await ExecuteAsync(connection, transaction, """
+                insert into user_item_inbox_packages("userId",payload,expires_at) values($1,$2::jsonb,now()+interval '30 days')
+                """, userId.Value, payload);
+            bonuses.Add(BuildLoginBonusResult(reward, reward.IsLoop ? count % reward.Days + 1 : count + 1));
+            bootstrapKeys.Add(bootstrapKey);
         }
-        catch
+        if (bonuses.Count > 0)
         {
-            if (transaction.Connection is not null) await transaction.RollbackAsync();
-            throw;
+            await ExecuteAsync(connection, transaction, """
+                update user_login_bonus_states set current_count=current_count+1,total_count=total_count+1,
+                    shown_at=$3,status=1,updated_at=now()
+                where "userId"=$1 and (status<>1 or shown_at<$2)
+                """, userId.Value, windowStartUtc, now.UtcDateTime);
         }
-
+        await transaction.CommitAsync();
         var packages = await ReadInboxPackagesByBootstrapKeysAsync(connection, userId.Value, bootstrapKeys);
         var presentData = packages.Select(value => DataObject(41, value)).ToArray();
-        return new LoginBonusReceiveResult(
-            activeRewards.Select(reward => BuildLoginBonusResult(reward, currentLoginCount)).ToArray<object?>(),
-            presentData);
+        context.RequestServices.GetRequiredService<ILogger<UserDataService>>().Log(bonuses.Count > 0 ? LogLevel.Information : LogLevel.Debug,
+            "登录奖励检查完成 operation={Operation} userId={UserId} gameDay={GameDay} rewardCount={RewardCount}",
+            "login-bonus-claim", userId, windowKey, bonuses.Count);
+        return new LoginBonusReceiveResult(bonuses.ToArray(), presentData);
     }
 
     public async Task<bool> HasUnreadInboxPackagesAsync(HttpContext context)

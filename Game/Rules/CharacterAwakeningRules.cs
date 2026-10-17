@@ -31,4 +31,5 @@ static class CharacterAwakeningErrors
     public const string Unsupported = "CHARACTER_AWAKENING_UNSUPPORTED";
     public const string LevelRequired = "CHARACTER_AWAKENING_LEVEL_REQUIRED";
     public const string ItemInsufficient = "CHARACTER_AWAKENING_ITEM_INSUFFICIENT";
+    public const string DisplayUnavailable = "CHARACTER_AWAKENING_DISPLAY_UNAVAILABLE";
 }

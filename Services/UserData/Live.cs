@@ -27,7 +27,7 @@ sealed partial class UserDataService
     const int CapturedLiveCoinGain = 3510;
     static readonly (long ItemMasterId, int Quantity)[] CapturedLiveItemRewards =
     {
-        (432607, 189),
+        (MissionPassRules.PointItemId, 189),
         (130021, 105),
         (130023, 35),
         (120001, 35),
@@ -60,7 +60,7 @@ sealed partial class UserDataService
         (140000, 10),
         (120002, 120),
         (130061, 527),
-        (432607, 5395),
+        (MissionPassRules.PointItemId, 5395),
         (120001, 385),
         (130023, 1266),
         (130022, 1934),
@@ -74,7 +74,7 @@ sealed partial class UserDataService
         (120002, 150),
         (130061, 557),
         (140000, 20),
-        (432607, 5425),
+        (MissionPassRules.PointItemId, 5425),
         (130062, 136),
         (120001, 392),
         (130022, 1971),

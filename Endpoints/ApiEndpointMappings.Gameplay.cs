@@ -50,10 +50,10 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start payload={ValueFormatter.Format(body)}");
-            await state.UserDataService.RegisterLiveStartAsync(context, body);
+            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, buildUnit: true);
             await codec.WriteApiFramesAsync(
                 context,
-                GameResults.LiveStartResult(body),
+                unit,
                 await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
@@ -64,10 +64,10 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-ghost-live payload={ValueFormatter.Format(body)}");
-            await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false);
+            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, buildUnit: true);
             await codec.WriteApiFramesAsync(
                 context,
-                GameResults.GhostLiveStartResult(body),
+                unit,
                 await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
@@ -93,10 +93,10 @@ static partial class ApiEndpointMappings
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-start-music-course-live payload={ValueFormatter.Format(body)}");
-            await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false);
+            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, buildUnit: true);
             await codec.WriteApiFramesAsync(
                 context,
-                GameResults.LiveStartResult(body),
+                unit,
                 await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
@@ -242,6 +242,13 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
+        app.MapPost("/localap/api/Characters/{characterId:long}/SwitchCharacterDisplayAwakeningStatusAsync", async (HttpContext context, long characterId) =>
+        {
+            var present = await state.UserDataService.SwitchCharacterDisplayAwakeningStatusAsync(context, characterId);
+            await codec.WriteApiFramesAsync(context, new object?[] { true }, present,
+                Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
+        });
+
         app.MapPost("/localap/api/Characters/{characterId:long}/EnhanceSenseLevel/{senseLevel:int}", async (HttpContext context, long characterId, int senseLevel) =>
         {
             var priority = 1;
@@ -330,16 +337,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Missions/MissionPassReceiveRewards/{missionPassId:long}", async (HttpContext context, long missionPassId) =>
-        {
-            await logger.LogAsync($"missions-pass-receive-rewards missionPassId={missionPassId} query={context.Request.QueryString}");
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.MissionPassReceiveRewardsResult(missionPassId),
-                GameResults.MissionPassReceiveRewardsPresentData(missionPassId),
-                Array.Empty<object?>(),
-                Array.Empty<object?>());
-        });
+        MapMissionPassEndpoints(app, state);
 
         app.MapGet("/localap/api/MultiRooms", async context =>
         {

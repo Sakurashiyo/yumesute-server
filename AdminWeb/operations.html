@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>活动与奖励 · SIRIUS</title>
+  <link rel="stylesheet" href="/admin/operations/operations.css">
+  <script defer src="/admin/operations/operations-rewards.js"></script>
+  <script defer src="/admin/operations/operations.js"></script>
+  <script defer src="/admin/operations/notifications.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/admin/operations/"><span class="brand-mark">✦</span><span>SIRIUS<small>LOCAL SERVER</small></span></a>
+    <p class="nav-label">服务器管理</p>
+    <nav aria-label="管理分类">
+      <button class="nav-item active" data-tab="pass"><span>01</span>Mission Pass</button>
+      <button class="nav-item" data-tab="gachas"><span>02</span>卡池开放</button>
+      <button class="nav-item" data-tab="bonuses"><span>03</span>每日登录奖励</button>
+      <button class="nav-item" data-tab="notices"><span>04</span>游戏公告</button>
+    </nav>
+    <a class="save-link" href="/admin/save-editor/">玩家存档工作台 <span>↗</span></a>
+    <div class="sidebar-bottom"><span class="local-dot"></span>本机管理<p>配置保存在服务器数据库<br>重启后仍然保留</p></div>
+  </aside>
+  <main>
+    <header class="page-header"><div><p class="eyebrow">GAME OPERATIONS</p><h1>活动与奖励</h1><p class="subtitle">安排开放时间，调整奖励，让每次登录都有所期待。</p></div><span class="version" id="revision">读取配置中</span></header>
+    <div class="summary-grid" aria-label="配置概览">
+      <button class="summary-card" data-tab="pass"><span>MISSION PASS</span><strong id="pass-summary">—</strong><small>普通 / SP 奖励与积分门槛</small></button>
+      <button class="summary-card" data-tab="gachas"><span>GACHA</span><strong id="gacha-summary">—</strong><small>常驻与往期角色 / 海报卡池</small></button>
+      <button class="summary-card" data-tab="bonuses"><span>LOGIN BONUS</span><strong id="bonus-summary">—</strong><small>常规与纪念登录奖励</small></button>
+    </div>
+    <p class="message" id="message" role="status" aria-live="polite">正在读取活动配置…</p>
+    <form id="operations-form">
+      <fieldset id="editor" disabled>
+        <section class="panel" id="panel-pass">
+          <div class="section-heading"><div><p class="eyebrow">01 / MISSION PASS</p><h2 id="pass-title">通行证配置</h2></div><span class="tag">50 阶 + 循环奖励</span></div>
+          <div class="controls-grid">
+            <label class="toggle-card"><span><strong>开放 Mission Pass</strong><small>关闭后停止新积分产出与领奖，保留已有进度</small></span><input id="pass-enabled" type="checkbox" role="switch"><span class="switch"></span></label>
+            <label class="toggle-card"><span><strong>开放 SP 奖励档</strong><small>开放后免费领取，已达成但未领的 SP 奖励可补领</small></span><input id="pass-sp" type="checkbox" role="switch"><span class="switch"></span></label>
+          </div>
+          <div class="period" id="pass-period"></div>
+          <div class="table-heading"><div><h3>逐阶门槛与奖励</h3><p>积分门槛需严格递增，且不超过 20,000。客户端循环奖励固定从 20,000 积分开始。</p></div><label class="phase-filter">定位阶段<input id="phase-filter" type="number" min="1" max="50" placeholder="1–50"></label></div>
+          <p class="hint">保存修改不会清空玩家领取记录；已领取阶段不会再次发奖。奖励变更仅用于后续领取。</p>
+          <div class="table-scroll"><table class="reward-table"><thead><tr><th>阶段</th><th>累计积分</th><th>普通奖励</th><th><span class="sp-label">SP</span> 奖励</th></tr></thead><tbody id="stages"></tbody></table></div>
+          <div class="table-heading"><div><h3>循环奖励</h3><p>领完 50 阶后继续累计积分。循环门槛遵循客户端规则，随轮次递增。</p></div></div>
+          <div class="loop-grid" id="loops"></div>
+        </section>
+        <section class="panel" id="panel-gachas" hidden>
+          <div class="section-heading"><div><p class="eyebrow">02 / GACHA</p><h2>卡池开放</h2></div><span class="tag">常驻与往期普通卡池</span></div>
+          <p class="section-description">关闭后同步隐藏卡池与对应兑换所，并拒绝新的抽卡和兑换。持有角色、海报与点数保留。</p>
+          <p class="hint">往期池保留原收录名单，采用本服概率：角色 82% / 15% / 3%，海报 80% / 16% / 4%；同稀有度均分概率，十连末抽保底次高档。单抽 300 / 十连 3000 剧珠。未恢复原版 UP、付费折扣与阶梯规则。</p>
+          <label class="field">搜索卡池<input id="gacha-search" type="search" placeholder="名称或卡池 ID"></label>
+          <div class="gacha-grid" id="gachas"></div>
+        </section>
+        <section class="panel" id="panel-bonuses" hidden>
+          <div class="section-heading"><div><p class="eyebrow">03 / LOGIN BONUS</p><h2>每日登录奖励</h2></div><span class="tag">日本时间 05:00 刷新</span></div>
+          <p class="section-description">特殊奖励可重新开放并单独安排时间。每项活动每天只发一次；当天新开启的活动可在再次登录时领取。已发往礼物箱的奖励会保留。</p>
+          <div class="bonus-list" id="bonuses"></div>
+          <p class="hint">限期活动发满原定天数后结束；重新开关不会重置领取天数。普通登录奖励按原定周期循环。</p>
+        </section>
+      </fieldset>
+      <footer class="save-bar"><div><span id="dirty-dot"></span><strong id="save-state">尚未加载</strong><p>保存后服务端立即使用新配置；游戏内请重新登录以同步主数据。</p></div><div class="save-actions"><button type="button" id="reload">撤销未保存修改</button><button class="primary" type="submit" id="save" disabled>保存并应用 <span>↗</span></button></div></footer>
+    </form>
+    <section class="panel" id="panel-notices" hidden>
+      <div class="section-heading"><div><p class="eyebrow">04 / NOTIFICATIONS</p><h2>游戏公告</h2></div><button type="button" id="notice-new">新建公告 +</button></div>
+      <p class="section-description">选择游戏原有横幅，编辑内容并安排展示时间。公告单独保存；结束时间到达后自动下架，玩家阅读记录保留。</p>
+      <div class="notice-layout">
+        <div><label class="field">搜索公告<input id="notice-search" type="search" placeholder="标题或 ID"></label><div id="notice-list" class="notice-list"></div></div>
+        <form id="notice-form">
+          <fieldset id="notice-editor" disabled>
+            <h3 id="notice-heading">选择公告或新建</h3>
+            <label class="field">公告标题<input id="notice-title" required maxlength="200"></label>
+            <div class="period">
+              <label class="field">展示页签<select id="notice-tab"><option value="1">重要通知</option><option value="2">更新信息</option><option value="3">故障信息</option></select></label>
+              <label class="field">分类<select id="notice-category"><option value="1">通知</option><option value="2">更新</option><option value="3">纪念活动</option><option value="4">活动</option><option value="5">卡池</option><option value="6">故障</option></select></label>
+              <label class="field">显示顺序（小值优先）<input id="notice-order" type="number" min="-100000" max="100000" required></label>
+            </div>
+            <label class="field">横幅名称或路径<input id="banner-search" type="search" placeholder="筛选本地游戏横幅"></label>
+            <p id="banner-count" class="banner-count"></p>
+            <div id="banner-gallery" class="banner-gallery" role="group" aria-label="游戏公告横幅图片"></div>
+            <label class="field">游戏内 banner<select id="notice-banner" required></select></label>
+            <img id="notice-banner-preview" class="banner-preview" alt="选中的游戏公告横幅" hidden>
+            <p id="banner-path" class="hint"></p>
+            <div class="period" id="notice-period"></div>
+            <div class="period">
+              <label class="field">发布时间<input id="notice-posting" type="datetime-local" required></label>
+              <label class="field">更新时间<input id="notice-updated" type="datetime-local" required></label>
+            </div>
+            <label><input id="notice-confirmation" type="checkbox"> 需要确认阅读</label>
+            <div class="table-heading"><h3>正文内容块</h3><button id="notice-add-block" type="button">添加内容块 +</button></div>
+            <div id="notice-blocks"></div>
+            <div class="notice-actions"><button id="notice-reload" type="button">重新读取公告</button><button class="primary" type="submit">保存公告并应用 ↗</button></div>
+          </fieldset>
+        </form>
+      </div>
+    </section>
+    <datalist id="reward-items"></datalist><datalist id="reward-posters"></datalist>
+  </main>
+</body>
+</html>

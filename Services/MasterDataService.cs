@@ -13,6 +13,29 @@ sealed class MasterDataService
 
     public async Task<MasterDataVersionInfo> GetActiveAsync()
     {
+        var source = await GetSourceAsync();
+        var operations = await new GameOperationsService(database).GetAsync();
+        operations = operations with { Configuration = FilterResources(operations.Configuration) };
+        return GachaMasterDataOverlay.Apply(source, operations);
+    }
+
+    public async Task ValidateOperationsAsync(GameOperationsConfiguration configuration)
+    {
+        GameOperationsValidation.Validate(configuration);
+        foreach (var pool in GachaRules.AllPools)
+            if (configuration.Gachas[pool.Id] && !HistoricalGachaResources.Available(pool,config.ResourcesRoot))
+                throw new GameOperationsException(GameOperationsErrors.Invalid,$"卡池 {pool.Id} 缺少可下发资源，无法开启");
+        var source = await GetSourceAsync();
+        _ = GachaMasterDataOverlay.Build(await File.ReadAllBytesAsync(source.LocalFilePath), configuration);
+    }
+
+    GameOperationsConfiguration FilterResources(GameOperationsConfiguration configuration) => configuration with {
+        Gachas = configuration.Gachas.ToDictionary(pair => pair.Key, pair => pair.Value
+            && HistoricalGachaResources.Available(GachaRules.AllPools.Single(pool => pool.Id == pair.Key),config.ResourcesRoot))
+    };
+
+    async Task<MasterDataVersionInfo> GetSourceAsync()
+    {
         await using var connection = await database.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
             """
@@ -27,15 +50,15 @@ sealed class MasterDataService
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {
-            return GachaMasterDataOverlay.Apply(MasterDataVersionInfo.FromConfig(config));
+            return MasterDataVersionInfo.FromConfig(config);
         }
 
-        return GachaMasterDataOverlay.Apply(new MasterDataVersionInfo(
+        return new MasterDataVersionInfo(
             reader.GetString(0),
             reader.GetInt64(1),
             reader.GetString(2),
             reader.GetString(3),
-            reader.GetString(4)));
+            reader.GetString(4));
     }
 }
 

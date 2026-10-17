@@ -32,9 +32,12 @@ sealed partial class UserDataService
         }
         // 目前客户端只有一次觉醒；重复请求返回已觉醒角色，避免再次扣材料。
         await using (var update = new NpgsqlCommand("""
-            update user_character_cards set awakening=1 where id=$1 and "userId"=$2
+            update user_character_cards
+            set awakening=1,
+                display_awakening_status = case when awakening=0 then true else display_awakening_status end
+            where id=$1 and "userId"=$2
             returning id, character_master_id, level, exp, awakening, character_base_id,
-                      skill_level, extra_1, extra_2, is_new
+                      skill_level, extra_1, extra_2, is_new, display_awakening_status
             """, connection, transaction))
         {
             update.Parameters.AddWithValue(characterId);
@@ -47,5 +50,31 @@ sealed partial class UserDataService
         if (phase == 0) context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
             "角色觉醒 operation=character-awakening userId={UserId} characterId={CharacterId} from={From} to=1 outcome=success", userId, characterId, phase);
         return present.ToArray();
+    }
+
+    public async Task<object?[]> SwitchCharacterDisplayAwakeningStatusAsync(HttpContext context, long characterId)
+    {
+        var userId = await RequireAuthenticatedUserAsync(context);
+        await using var connection = await database.OpenConnectionAsync();
+        // 单条更新原子切换，避免并发请求读到同一个旧值。
+        await using var command = new NpgsqlCommand("""
+            update user_character_cards set display_awakening_status = not display_awakening_status
+            where id=$1 and "userId"=$2 and awakening > 0
+            returning id, character_master_id, level, exp, awakening, character_base_id,
+                      skill_level, extra_1, extra_2, is_new, display_awakening_status
+            """, connection);
+        command.Parameters.AddWithValue(characterId);
+        command.Parameters.AddWithValue(userId);
+        object?[] card;
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            if (!await reader.ReadAsync())
+                throw new BadHttpRequestException(CharacterAwakeningErrors.DisplayUnavailable, StatusCodes.Status409Conflict);
+            card = ReadUpdatedCharacter(reader);
+        }
+        context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
+            "切换角色卡面 operation=character-art-switch userId={UserId} characterId={CharacterId} displayAwakeningStatus={DisplayAwakeningStatus} outcome=success",
+            userId, characterId, card[10]);
+        return new object?[] { DataObject(4, card) };
     }
 }

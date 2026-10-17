@@ -6,6 +6,18 @@ sealed partial class UserDataService
     const string PartyNotFound = "PARTY_NOT_FOUND";
     const string PartyMemberInvalid = "PARTY_MEMBER_INVALID";
 
+    static void ResolvePartyCharacterAliases(long userId, IEnumerable<object?[]> slots, IEnumerable<object?[]> cards)
+    {
+        var byMaster = cards.ToDictionary(card => Convert.ToInt64(card[1]), card => Convert.ToInt64(card[0]));
+        var aliases = BootstrapCharacterMasterIds.Select((master, index) => (master, index))
+            .Where(item => byMaster.ContainsKey(item.master))
+            .ToDictionary(item => UserScopedId(userId, 1001 + item.index), item => byMaster[item.master]);
+        // 旧默认编队保存的是预设实例 ID，登录展示和开演必须解析成同一张实际卡片。
+        foreach (var slot in slots)
+            if (slot[3] is not null && aliases.TryGetValue(Convert.ToInt64(slot[3]), out var actualId))
+                slot[3] = actualId;
+    }
+
     public async Task<object?[]> EditPartyAsync(HttpContext context, long partyId, object? payload)
     {
         if (payload is not object?[] { Length: 6 } values || values[0] is not object?[] { Length: 5 } slots)

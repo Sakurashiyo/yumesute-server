@@ -203,6 +203,11 @@ static class DatabaseMigrator
         await MigrateActorPortalAsync(connection);
         await SocialRealtimeSchema.MigrateAsync(connection);
         await CharacterGrowthSchema.MigrateAsync(connection);
+        await MissionPassSchema.MigrateAsync(connection);
+        await GameOperationsSchema.MigrateAsync(connection, config);
+        await using var notificationRevision = new NpgsqlCommand(
+            "alter table system_notifications add column if not exists revision bigint not null default 0", connection);
+        await notificationRevision.ExecuteNonQueryAsync();
         if (config is not null)
         {
             await SeedActiveMasterDataVersionAsync(connection, config);

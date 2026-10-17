@@ -5,9 +5,10 @@ sealed partial class RealtimeHubService(LocalServerState state)
 {
     public async Task ConnectAsync(string hub, IAsyncStreamReader<byte[]> requests, IServerStreamWriter<byte[]> responses, ServerCallContext call)
     {
+        var logger = call.GetHttpContext().RequestServices.GetRequiredService<ILogger<RealtimeHubService>>();
+        logger.LogInformation("实时连接请求 hub={Hub} connectionId={ConnectionId}", hub, call.GetHttpContext().TraceIdentifier);
         var authenticated = await AuthenticateAsync(call);
         var userId = authenticated.UserId;
-        var logger = call.GetHttpContext().RequestServices.GetRequiredService<ILogger<RealtimeHubService>>();
         logger.LogInformation("实时连接建立 hub={Hub} userId={UserId} connectionId={ConnectionId}", hub, userId, call.GetHttpContext().TraceIdentifier);
         await call.WriteResponseHeadersAsync(new Metadata { { "x-magiconion-streaminghub-version", "2" } });
         // MagicOnion 客户端等待首帧才完成 ConnectAsync；-1 请求编号是协议就绪标记。

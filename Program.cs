@@ -9,6 +9,7 @@ await state.Logger.LogAsync($"config publicBaseUrl={config.PublicBaseUrl} msgpac
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
+builder.Logging.AddProvider(new RealtimeFileLoggerProvider(state.RealtimeLogger));
 builder.WebHost.ConfigureKestrel(options =>
 {
     var address = config.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
@@ -23,8 +24,17 @@ builder.Services.AddSingleton<Grpc.AspNetCore.Server.Model.IServiceMethodProvide
 
 var app = builder.Build();
 
+var realtimeLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Realtime");
+realtimeLogger.LogInformation("实时服务初始化 host={Host} port={Port} logPath={LogPath}",
+    config.Host, config.RealtimePort, Path.Combine(AppContext.BaseDirectory, "realtime.log"));
+app.Lifetime.ApplicationStarted.Register(() =>
+    realtimeLogger.LogInformation("实时服务已启动 host={Host} port={Port} publicUrl={PublicUrl}",
+        config.Host, config.RealtimePort, config.RealtimeBaseUrl));
+app.Lifetime.ApplicationStopping.Register(() => realtimeLogger.LogInformation("实时服务正在停止"));
+
 await DatabaseMigrator.MigrateAsync(state.Database, config);
 
+app.UseRealtimeRequestLogging(realtimeLogger, config.RealtimePort);
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/api", out var remaining))
@@ -41,6 +51,7 @@ app.MapApiEndpoints(state);
 app.MapAssetEndpoints(state);
 app.MapAdminNotificationEndpoints(state);
 app.MapAdminSaveEndpoints(state);
+app.MapAdminOperationsEndpoints(state);
 app.MapRealtimeDebugEndpoints(state);
 app.MapGrpcService<RealtimeHubService>();
 

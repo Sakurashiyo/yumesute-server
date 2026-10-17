@@ -55,9 +55,16 @@
     <EmbeddedResource Include="masterdata-export/tables/CostumeWearableCharacterGroupMaster.json" LogicalName="AdminMaster.CostumeWearableCharacterGroupMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/ItemMaster.json" LogicalName="AdminMaster.ItemMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/MissionMaster.json" LogicalName="Mission.MissionMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/MissionPassMaster.json" LogicalName="Mission.MissionPassMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/MissionPassDetailMaster.json" LogicalName="Mission.MissionPassDetailMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/MissionPassLoopRewardMaster.json" LogicalName="Mission.MissionPassLoopRewardMaster.json" />
     <EmbeddedResource Include="AdminWeb/*" LogicalName="AdminWeb.%(Filename)%(Extension)" />
     <Content Include="../admin-icons/**/*.png" Link="AdminIcons/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="AdminAssets/**/*.png" Link="AdminIcons/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="masterdata-export/tables/GachaMaster.json" LogicalName="Gacha.GachaMaster.json" />
 
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="masterdata-export/tables/SenseMaster.json;masterdata-export/tables/StarActMaster.json;masterdata-export/tables/StarActConditionMaster.json;masterdata-export/tables/LeaderSenseMaster.json;masterdata-export/tables/EffectTriggerCharacterBaseGroupMaster.json" LogicalName="Live.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -35,7 +35,7 @@ sealed partial class UserDataService
         await using (var update = new NpgsqlCommand("""
             update user_character_cards set skill_level = $3 where id = $1 and "userId" = $2
             returning id, character_master_id, level, exp, awakening, character_base_id,
-                      skill_level, extra_1, extra_2, is_new
+                      skill_level, extra_1, extra_2, is_new, display_awakening_status
             """, connection, transaction))
         {
             update.Parameters.AddWithValue(characterId);

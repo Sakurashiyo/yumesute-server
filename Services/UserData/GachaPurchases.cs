@@ -4,13 +4,18 @@ using Npgsql;
 sealed partial class UserDataService
 {
     public sealed record GachaPurchase(object?[] Result,object?[] Present);
+    bool PoolAvailable(GachaRules.Pool pool) => !pool.Historical
+        || HistoricalGachaResources.Available(pool,gachaResourcesRoot ?? LocalConfig.FromEnvironment().ResourcesRoot);
     public async Task<GachaPurchase> RollGachaAsync(HttpContext context,long detailId)
     {
         if(!GachaRules.Details.TryGetValue(detailId,out var detail))throw new BadHttpRequestException(GachaErrors.Unavailable,404);
+        if (!PoolAvailable(detail.Pool)) throw new BadHttpRequestException(GachaErrors.Unavailable,404);
         var userId=await RequireAuthenticatedUserAsync(context);
         await EnsureDefaultUserDataAsync(userId);
         await using var connection=await database.OpenConnectionAsync();
         await using var transaction=await connection.BeginTransactionAsync();
+        var operations=await GameOperationsService.ReadAsync(connection,transaction,lockForUse:true);
+        if(!operations.Configuration.Gachas[detail.Pool.Id])throw new BadHttpRequestException(GachaErrors.Unavailable,404);
         await LockLessonUserAsync(connection,transaction,userId);
         var currency=await ReadCurrencyAsync(connection,userId);
         var free=Convert.ToInt32(currency[2]);var paid=Convert.ToInt32(currency[3]);
@@ -22,7 +27,7 @@ sealed partial class UserDataService
         for(var i=0;i<detail.Count;i++)
         {
             var entry=GachaRules.Draw(detail.Pool,detail.Count==10 && i==9);
-            var received=await GrantGachaEntryAsync(connection,transaction,userId,entry,changed);
+            var received=await GrantCollectionEntryAsync(connection,transaction,userId,entry,changed);
             rewards.Add(new object?[] {new object?[] {received},Array.Empty<object?>(),null});
             await ExecuteAsync(connection,transaction,"""
                 insert into user_gacha_histories("userId",gacha_detail_master_id,thing_type,thing_master_id,quantity,payload)
@@ -42,17 +47,21 @@ sealed partial class UserDataService
     {
         if(requests.Length is <1 or >100 || requests.Any(r=>r.Quantity is <1 or >100))throw new BadHttpRequestException(GachaErrors.Invalid,400);
         var products=requests.Select(r=> GachaRules.Exchanges.TryGetValue(r.Id,out var product)?(Product:product,r.Quantity):throw new BadHttpRequestException(GachaErrors.Unavailable,404)).ToArray();
+        if (products.Any(product => !PoolAvailable(product.Product.Pool))) throw new BadHttpRequestException(GachaErrors.Unavailable,404);
         var userId=await RequireAuthenticatedUserAsync(context);
         await EnsureDefaultUserDataAsync(userId);
         await using var connection=await database.OpenConnectionAsync();
         await using var transaction=await connection.BeginTransactionAsync();
+        var operations=await GameOperationsService.ReadAsync(connection,transaction,lockForUse:true);
+        if(products.Any(product=>!operations.Configuration.Gachas[product.Product.Pool.Id]))
+            throw new BadHttpRequestException(GachaErrors.Unavailable,404);
         await LockLessonUserAsync(connection,transaction,userId);
         var changed=new List<object?>();var rewards=new List<object?>();
         foreach(var product in products)
         {
             if(await ExecuteMarketItemCostAsync(connection,transaction,userId,product.Product.Pool.PointId,product.Quantity*GachaRules.ExchangeCost)!=1)
                 throw new BadHttpRequestException(GachaErrors.Insufficient,409);
-            for(var i=0;i<product.Quantity;i++)rewards.Add(await GrantGachaEntryAsync(connection,transaction,userId,product.Product.Entry,changed));
+            for(var i=0;i<product.Quantity;i++)rewards.Add(await GrantCollectionEntryAsync(connection,transaction,userId,product.Product.Entry,changed));
         }
         var pointIds=products.Select(p=>p.Product.Pool.PointId).ToHashSet();
         foreach(var item in await ReadItemPossessionsAsync(connection,userId))
@@ -64,7 +73,7 @@ sealed partial class UserDataService
         return new(rewards.ToArray(),present);
     }
 
-    async Task<object?[]> GrantGachaEntryAsync(NpgsqlConnection connection,NpgsqlTransaction transaction,long userId,GachaRules.Entry entry,List<object?> changed)
+    async Task<object?[]> GrantCollectionEntryAsync(NpgsqlConnection connection,NpgsqlTransaction transaction,long userId,GachaRules.Entry entry,List<object?> changed)
     {
         if(entry.Type==2)
         {

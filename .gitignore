@@ -7,11 +7,14 @@ server-*.log
 *.cmd
 *.json
 *.jsonl
+!AdminWeb/notification-banners.json
+!AdminWeb/historical-gachas.json
 
 # Build output
 bin/
 obj/
 build-check-current/
+AdminAssets/
 
 # Local IDE/editor state
 .vs/

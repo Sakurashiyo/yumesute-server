@@ -230,7 +230,7 @@ sealed partial class UserDataService
         await using var command = new NpgsqlCommand(
             """
             select id, character_master_id, level, exp, awakening, character_base_id,
-                   skill_level, extra_1, extra_2, is_new
+                   skill_level, extra_1, extra_2, is_new, display_awakening_status
             from user_character_cards
             where "userId" = $1
               and character_master_id = $2
@@ -265,24 +265,7 @@ sealed partial class UserDataService
             };
         }
 
-        return new object?[]
-        {
-            reader.GetInt64(0),
-            reader.GetInt64(1),
-            reader.GetInt32(2),
-            reader.GetInt32(3),
-            0,
-            reader.GetInt32(4),
-            reader.GetInt64(5),
-            reader.GetInt32(6),
-            reader.GetInt32(7),
-            reader.GetInt32(8),
-            false,
-            null,
-            0,
-            1,
-            reader.GetBoolean(9)
-        };
+        return ReadUpdatedCharacter(reader);
     }
 
     static async Task<object?[]> ReadOrCreateItemPossessionAsync(

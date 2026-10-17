@@ -37,6 +37,8 @@
 
 `user_character_cards` 保存玩家已拥有的 Actor / 卡牌实例，关联 `"userId"`，并可关联 `user_character_bases(id)`。
 
+`awakening` 保存觉醒阶段，`display_awakening_status` 独立保存客户端 Character key10 的卡面选择。首次迁移为已有觉醒卡启用觉醒卡面；后续迁移保留玩家选择。首次觉醒自动显示新卡面，重复觉醒不覆盖选择。升级、Sense、故事与全量同步共用角色序列化，避免把卡面重新下发为原画。`Characters/{id}/SwitchCharacterDisplayAwakeningStatusAsync` 认证后原子切换本人已觉醒卡，响应 union4；未觉醒、不存在或不属于账号统一返回 `CHARACTER_AWAKENING_DISPLAY_UNAVAILABLE`（409）。
+
 `skill_level` 对应客户端 `Character.SenseLevel`，默认 1，必须大于等于 1。历史零值由启动迁移修正为 1；已有强化等级保持不变。零值会导致客户端无法匹配 EffectMaster 的等级效果并中断编队刷新。
 
 `Characters/{id}/EnhanceSenseLevel/{target}` 根据 CharacterMaster key14 与 CharacterSenseEnhanceItemGroupMaster 按当前等级累计材料消耗，事务内锁定角色、条件扣库存、更新 skill_level；响应 present 返回 Character union4 与 ItemPossession union27。相同目标重试不重复扣除，跨级材料不足整体回滚。Primary Sense（priority=1）范围 1–5；Secondary Sense 尚未持久化，priority=2 明确拒绝，不能返回虚假成功。非法参数为 `CHARACTER_SENSE_INVALID_REQUEST`（400），角色不存在/不属于账号为 `CHARACTER_SENSE_CHARACTER_MISSING`（404），倒退目标为 `CHARACTER_SENSE_LEVEL_CONFLICT`（409），材料不足为 `CHARACTER_SENSE_ITEM_INSUFFICIENT`（409）；有效会话认证规则与社团写接口一致。
@@ -83,9 +85,17 @@
 
 ## 主页与通知表
 
+`system_game_operations` 以单行 JSONB 保存 Mission Pass、卡池和每日登录奖励配置，`revision` 为单调递增版本。管理保存通过版本比较防止覆盖；发奖先持有配置行共享锁，再取得账号锁，事务提交后才允许配置切换。主数据版本包含配置版本，避免客户端沿用旧活动缓存。配置校验失败为 `OPERATIONS_INVALID_CONFIG`（400）、并发旧版本为 `OPERATIONS_REVISION_CONFLICT`（409）、非本机/非同源提交为 `OPERATIONS_FORBIDDEN`（403），未预期失败为 `OPERATIONS_SAVE_FAILED`（500）。
+
+`user_login_bonus_claims` 按 `"userId"`、`login_bonus_id`、`game_day` 唯一记录各签到活动的领取。`game_day` 按日本时间 05:00 划分；领取记录、礼物箱写入与旧签到状态更新在同一账号事务内提交。启动迁移从旧礼物箱的签到标识回填记录，首次迁移额外保留旧常规签到最后一次领取日，避免已清理礼物箱的旧账号重复领取。已发满天数的特殊活动不会因开关重置。
+
 `user_home_bgms`、`user_home_skins`、`user_home_skin_possessions` 保存主页 BGM、主页皮肤和皮肤持有状态。
 
 `system_notifications` 保存面向所有玩家展示的系统公告。公告正文以客户端可读取的 JSON body 保存。
+
+公告管理合并至 `/admin/operations/`，`system_notifications.revision` 为每条公告的乐观锁版本，编辑时按 ID/版本比较更新，防止覆盖其他页面的修改。保存验证真实横幅白名单、正文块、分类、展示时间和长度；失败代码为 `NOTIFICATION_INVALID`（400）、`NOTIFICATION_BANNER_UNAVAILABLE`（400）、`NOTIFICATION_REVISION_CONFLICT`（409）。下架使用 `ends_at`，保留公告和阅读记录。
+
+新增往期卡池时，迁移只给 `system_game_operations.payload.gachas` 补齐缺少的 ID，往期池默认关闭，并递增配置版本；已存在开关保持不变，不覆盖管理员手动开启的池。新配置仅默认开放全角色池 1888、全海报池 2860。客户端 master 与卡池列表过滤缺资源池，抽卡和兑换同样校验，不能绕过管理开关或资源要求。
 
 `user_notification_reads` 保存每个玩家对系统公告的已读时间。`user_notification_states` 保存三个公告分类的阅读时间，通过 union94 同步客户端。读取 `ReadNotificationPayload` 时严格使用 key0 的分类和 key1 的时间，不将分类编号解析为 Unix 时间；非法请求为 `NOTIFICATION_INVALID_READ_REQUEST`（400）。分类和单条记录均采用单调更新，延迟请求不能回退已读时间，每日刷新不会清除状态；尚未发布或在阅读时间之后更新的公告不会被提前标记。此前错误保存为 1970 年的记录，启用修复版后重新阅读即可更新，不推测补写玩家未确认的阅读状态。
 
@@ -188,6 +198,14 @@ union130 的 `LiveAchievement` 按存档计算 `[userId, 已购买OLIVIER数量,
 稽古开始快照新增第三项卡片战力映射 `[LessonParty, Cards, StatusByCardId]`，卡片 ID 以十进制字符串作为映射键。旧版两项快照在读取未完成场次时补存第三项，不更改次数或奖励。战力采用解包 CharacterMaster、CharacterLevelMaster、CharacterBloomBonusGroupMaster、EffectMaster 与 CharacterStarRankMaster；星章加成为 `min(当前星章加成, 高分满足的最大加成)`，高分缺省为 0 时上限 2.5%。
 
 剧情进度：`user_episode_read_states` 一条记录表示已读，key95第二字段为 `has_read_all`（非 is_new）。新增列默认false，ReadAll只能升级为true；重复Read不降级。前置剧情、一次性奖励和已读写入在玩家状态行锁与同一事务内处理。主数据奖励类型1/13发放道具/免费宝石，3海报持有状态保留旧版 raw 存档编号28，读取时映射为客户端 Poster union11（客户端28实际为 AccessoryEffectMaster），不批量改写存档。8铭牌保存在45。两份宝石余额同步，重登录包含11与95。旧教程已读记录不重复补发奖励。
+
+## Mission Pass
+
+`user_mission_passes` 按 `("userId", mission_pass_master_id)` 唯一保存普通/SP 已领取阶段及各自已领取循环奖励数，账号删除时级联清理。积分复用 `user_item_possessions` 中的 432607；既有积分直接保留，旧版固定领奖响应没有可靠领取记录，首次升级不据此推断已领取阶段。
+
+客户端 union 97 读取该表，11 个字段依次为 ID、玩家 ID、通行证主数据 ID、SP 开放标记、普通阶段、SP 阶段、终止标记、普通循环轮次/阶段、SP 循环轮次/阶段。当前最后一期常驻并免费开放 SP，循环轮次从 1 起、阶段为 0–3，领完一轮进入下一轮的阶段 0。旧 `user_player_settings` 表保留原数据，但不再误映射为 union 97。
+
+领奖、积分兑换与演出结算共用玩家行锁；奖励、两份钱包余额及领取阶段在同一事务内提交。积分兑换拒绝非正单位、余额不足和超过主数据积分上限的请求。公开错误码为 `MISSION_PASS_UNAVAILABLE`（404）、`MISSION_PASS_INVALID_REQUEST`（400）、`MISSION_PASS_INSUFFICIENT_JEWELS`（409）、`MISSION_PASS_POINT_LIMIT`（409）。
 
 ## 社团管理与支援
 
