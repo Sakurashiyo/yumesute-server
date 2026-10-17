@@ -34,7 +34,7 @@ sealed partial class UserDataService
         await using (var update = new NpgsqlCommand("""
             update user_character_cards
             set awakening=1,
-                display_awakening_status = case when awakening=0 then true else display_awakening_status end
+                display_awakening_status = $3 and (awakening=0 or display_awakening_status)
             where id=$1 and "userId"=$2
             returning id, character_master_id, level, exp, awakening, character_base_id,
                       skill_level, extra_1, extra_2, is_new, display_awakening_status
@@ -42,6 +42,7 @@ sealed partial class UserDataService
         {
             update.Parameters.AddWithValue(characterId);
             update.Parameters.AddWithValue(userId);
+            update.Parameters.AddWithValue(CharacterAwakeningRules.HasAwakeningArt(master));
             await using var reader = await update.ExecuteReaderAsync();
             if (!await reader.ReadAsync()) throw new InvalidOperationException("觉醒更新后角色数据丢失");
             present.Insert(0, DataObject(4, ReadUpdatedCharacter(reader)));
@@ -59,12 +60,13 @@ sealed partial class UserDataService
         // 单条更新原子切换，避免并发请求读到同一个旧值。
         await using var command = new NpgsqlCommand("""
             update user_character_cards set display_awakening_status = not display_awakening_status
-            where id=$1 and "userId"=$2 and awakening > 0
+            where id=$1 and "userId"=$2 and awakening > 0 and character_master_id=any($3)
             returning id, character_master_id, level, exp, awakening, character_base_id,
                       skill_level, extra_1, extra_2, is_new, display_awakening_status
             """, connection);
         command.Parameters.AddWithValue(characterId);
         command.Parameters.AddWithValue(userId);
+        command.Parameters.AddWithValue(CharacterAwakeningRules.DisplayMasterIds);
         object?[] card;
         await using (var reader = await command.ExecuteReaderAsync())
         {

@@ -37,7 +37,7 @@
 
 `user_character_cards` 保存玩家已拥有的 Actor / 卡牌实例，关联 `"userId"`，并可关联 `user_character_bases(id)`。
 
-`awakening` 保存觉醒阶段，`display_awakening_status` 独立保存客户端 Character key10 的卡面选择。首次迁移为已有觉醒卡启用觉醒卡面；后续迁移保留玩家选择。首次觉醒自动显示新卡面，重复觉醒不覆盖选择。升级、Sense、故事与全量同步共用角色序列化，避免把卡面重新下发为原画。`Characters/{id}/SwitchCharacterDisplayAwakeningStatusAsync` 认证后原子切换本人已觉醒卡，响应 union4；未觉醒、不存在或不属于账号统一返回 `CHARACTER_AWAKENING_DISPLAY_UNAVAILABLE`（409）。
+`awakening` 保存觉醒阶段，`display_awakening_status` 独立保存客户端 Character key10 的卡面选择。当前客户端仅四星卡具有独立的 `_1` 卡面；三星及以下觉醒后仍使用 `_0`，觉醒属性正常保留。首次迁移为已有觉醒四星卡启用新卡面；后续迁移保留四星卡选择，并清理旧版误开启的低稀有度标记。首次四星觉醒自动显示新卡面，重复觉醒不覆盖选择。升级、Sense、故事与全量同步共用角色序列化。`Characters/{id}/SwitchCharacterDisplayAwakeningStatusAsync` 认证后原子切换本人已觉醒四星卡，响应 union4；无独立卡面、未觉醒、不存在或不属于账号统一返回 `CHARACTER_AWAKENING_DISPLAY_UNAVAILABLE`（409）。
 
 `skill_level` 对应客户端 `Character.SenseLevel`，默认 1，必须大于等于 1。历史零值由启动迁移修正为 1；已有强化等级保持不变。零值会导致客户端无法匹配 EffectMaster 的等级效果并中断编队刷新。
 

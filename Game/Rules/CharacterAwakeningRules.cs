@@ -2,7 +2,12 @@ using System.Text.Json;
 
 static class CharacterAwakeningRules
 {
-    static readonly Dictionary<long, long?> Characters = Read("AdminMaster.CharacterMaster.json").ToDictionary(r => r[0].GetInt64(), r => r[17].ValueKind == JsonValueKind.Null ? (long?)null : r[17].GetInt64());
+    static readonly JsonElement[] CharacterRows = Read("AdminMaster.CharacterMaster.json");
+    static readonly Dictionary<long, long?> Characters = CharacterRows.ToDictionary(r => r[0].GetInt64(), r => r[17].ValueKind == JsonValueKind.Null ? (long?)null : r[17].GetInt64());
+    // 当前客户端仅四星卡有独立的 _1 卡面；低稀有度觉醒仍提升属性，但沿用 _0。
+    public static readonly long[] DisplayMasterIds = CharacterRows.Where(r => r[5].GetInt32() == 4)
+        .Select(r => r[0].GetInt64()).ToArray();
+    public static bool HasAwakeningArt(long masterId) => DisplayMasterIds.Contains(masterId);
     static readonly Dictionary<long, Cost[]> Groups = Read("Progression.CharacterAwakeningItemGroupMaster.json").ToDictionary(r => r[0].GetInt64(),
         r => r[1].EnumerateArray().Select(c => new Cost(c[3].GetInt32(), c[4].GetInt64(), c[5].GetInt32())).ToArray());
     public static Cost[] Required(long masterId, int level, int phase)
