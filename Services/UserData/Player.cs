@@ -305,13 +305,18 @@ sealed partial class UserDataService
     public async Task<object?[]> UpdateHomeDisplayPreferenceAsync(HttpContext context, object? payload)
     {
         var userId = await GetCurrentUserIdAsync(context);
-        if (userId is null) return new object?[] { 0, 101, null, 101, 101, 101, 11, null, 11, 11, 11, DefaultCharacterMasterId, false, 0, 101, 11 };
-        if (payload is not object?[] values || values.Length < 15)
+        if (userId is null) throw new BadHttpRequestException(AccountErrors.Unauthorized, StatusCodes.Status401Unauthorized);
+        if (payload is null)
         {
             await EnsureDefaultUserDataAsync(userId.Value);
             await using var readConnection = await database.OpenConnectionAsync();
             return await ReadHomeDisplayPreferenceAsync(readConnection, userId.Value);
         }
+        if (payload is not object?[] { Length: 15 } values)
+            throw new BadHttpRequestException(HomeDisplayPreferenceRules.Invalid, StatusCodes.Status400BadRequest);
+        foreach (var index in new[] { 0, 2, 3, 4, 5, 7, 8, 9, 13, 14 })
+            if (values[index] is not null && GetLong(values, index) is null)
+                throw new BadHttpRequestException(HomeDisplayPreferenceRules.Invalid, StatusCodes.Status400BadRequest);
 
         await EnsureDefaultUserDataAsync(userId.Value);
         var characterBaseMasterId = GetLong(values, 0) ?? DefaultCharacterBaseMasterId;
@@ -319,7 +324,7 @@ sealed partial class UserDataService
         var subCharacterBaseMasterId1 = GetLong(values, 2) ?? DefaultCharacterBaseMasterId;
         var subCharacterBaseMasterId2 = GetLong(values, 3) ?? DefaultCharacterBaseMasterId;
         var subCharacterBaseMasterId3 = GetLong(values, 4) ?? DefaultCharacterBaseMasterId;
-        var costumeMasterId = GetLong(values, 5) ?? DefaultCostumeMasterId;
+        var costumeMasterId = HomeDisplayPreferenceRules.Costume(CharacterCatalog.Value, characterBaseMasterId, GetNullableLong(values, 5));
         var illustrationCostumeMasterId = GetNullableLong(values, 6);
         var subCostumeMasterId1 = GetNullableLong(values, 7);
         var subCostumeMasterId2 = GetNullableLong(values, 8);
@@ -328,7 +333,10 @@ sealed partial class UserDataService
         var isIllust = GetBool(values, 11) ?? false;
         var displayType = (int)(GetLong(values, 12) ?? 0);
         var selectedCharacterBaseMasterId = GetLong(values, 13) ?? characterBaseMasterId;
-        var selectedCostumeMasterId = GetLong(values, 14) ?? costumeMasterId;
+        var selectedCostumeMasterId = HomeDisplayPreferenceRules.Costume(CharacterCatalog.Value, selectedCharacterBaseMasterId, GetNullableLong(values, 14));
+        _ = HomeDisplayPreferenceRules.Costume(CharacterCatalog.Value, subCharacterBaseMasterId1, subCostumeMasterId1);
+        _ = HomeDisplayPreferenceRules.Costume(CharacterCatalog.Value, subCharacterBaseMasterId2, subCostumeMasterId2);
+        _ = HomeDisplayPreferenceRules.Costume(CharacterCatalog.Value, subCharacterBaseMasterId3, subCostumeMasterId3);
 
         await using var connection = await database.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
@@ -388,25 +396,7 @@ sealed partial class UserDataService
         command.Parameters.AddWithValue(selectedCostumeMasterId);
         await command.ExecuteNonQueryAsync();
 
-        return new object?[]
-        {
-            userId.Value,
-            values[0],
-            values[1],
-            values[2],
-            values[3],
-            values[4],
-            values[5],
-            values[6],
-            values[7],
-            values[8],
-            values[9],
-            values[10],
-            values[11],
-            values[12],
-            values[13],
-            values[14]
-        };
+        return await ReadHomeDisplayPreferenceAsync(connection, userId.Value);
     }
 
     static IEnumerable<long> ExtractLongs(object? value)
