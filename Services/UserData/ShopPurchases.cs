@@ -47,6 +47,18 @@ sealed partial class UserDataService
             reset.Parameters.AddWithValue(now.UtcDateTime);
             await reset.ExecuteNonQueryAsync();
         }
+        await using (var monthly = new NpgsqlCommand("""
+            update user_shop_purchase_states set purchased_count=0,reset_at=$3,updated_at=now()
+            where "userId"=$1 and shop_item_id=any($2) and reset_at <= $4
+            """, connection, transaction))
+        {
+            monthly.Parameters.AddWithValue(userId);
+            monthly.Parameters.AddWithValue(JewelShopRules.Products.Values.Where(product => product.ResetType == 3)
+                .Select(product => product.Id).ToArray());
+            monthly.Parameters.AddWithValue(JewelShopRules.NextMonthlyReset(now).UtcDateTime);
+            monthly.Parameters.AddWithValue(now.UtcDateTime);
+            await monthly.ExecuteNonQueryAsync();
+        }
         await using var command = new NpgsqlCommand("""
             select id,shop_item_id,purchased_count,
               coalesce((payload->>'totalPurchaseCount')::integer,purchased_count),reset_at

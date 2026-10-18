@@ -8,7 +8,9 @@ sealed partial class UserDataService
             throw new BadHttpRequestException(PermanentMarketErrors.InvalidRequest, 400);
         return RatingShopRules.Products.TryGetValue(productId, out var product)
             ? PurchaseRatingRewardAsync(context, product)
-            : PurchaseDailyFreePackAsync(context, body);
+            : JewelShopRules.Products.TryGetValue(productId, out var jewelProduct)
+                ? PurchaseJewelPackAsync(context, jewelProduct)
+                : PurchaseDailyFreePackAsync(context, body);
     }
 
     async Task<ShopPurchaseResponse> PurchaseRatingRewardAsync(HttpContext context, RatingShopRules.Product product)

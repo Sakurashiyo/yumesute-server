@@ -17,7 +17,6 @@ build-check-current/
 AdminAssets/
 tools/
 tests/
-
 # Local IDE/editor state
 .vs/
 .vscode/
