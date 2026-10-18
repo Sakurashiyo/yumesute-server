@@ -196,6 +196,7 @@ static class DatabaseMigrator
         await command.ExecuteNonQueryAsync();
         await CircleSchema.MigrateAsync(connection);
         await CharacterMissionSchema.MigrateAsync(connection);
+        await MigrateLiveSettlementAsync(connection);
         await AnotherNotationSchema.MigrateAsync(connection);
         await AccountRecoverySchema.MigrateAsync(connection);
         await MusicUnlockSchema.MigrateAsync(connection);
@@ -215,6 +216,15 @@ static class DatabaseMigrator
         await SeedStaticMasterDataAsync(connection, config);
         await SeedStaticCharactersAsync(connection);
         await SeedStaticItemsAsync(connection);
+    }
+
+    public static async Task MigrateLiveSettlementAsync(NpgsqlConnection connection)
+    {
+        await using var command = new NpgsqlCommand("""
+            alter table user_live_sessions add column if not exists start_snapshot bytea;
+            alter table user_live_sessions add column if not exists start_hash bytea;
+            """, connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     public static async Task MigrateCharacterSenseLevelsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction = null)
@@ -929,6 +939,7 @@ static class DatabaseMigrator
       stamina integer not null default 100,
       max_stamina integer not null default 100,
       stamina_recovered_at timestamptz not null default now(),
+      stamina_recovery_checkpoint_at timestamptz not null default now(),
       free_jewel integer not null default 0,
       paid_jewel integer not null default 0,
       coin integer not null default 0,
@@ -948,6 +959,9 @@ static class DatabaseMigrator
 
     alter table user_game_states
       add column if not exists rank_limit integer not null default 50;
+
+    alter table user_game_states
+      add column if not exists stamina_recovery_checkpoint_at timestamptz not null default now();
 
     create table if not exists user_live_sessions (
       "userId" bigint primary key references user_accounts(id) on delete cascade,

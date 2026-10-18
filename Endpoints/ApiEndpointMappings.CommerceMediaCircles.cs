@@ -113,7 +113,7 @@ static partial class ApiEndpointMappings
             try
             {
                 var body = await codec.ReadRequestBodyAsync(context);
-                var purchase = await state.UserDataService.PurchaseDailyFreePackAsync(context, body);
+                var purchase = await state.UserDataService.PurchaseShopItemAsync(context, body);
                 await codec.WriteApiFramesAsync(context, purchase.Rewards, purchase.Present, Array.Empty<object?>(),
                     purchase.Rewards.Length > 0 ? GameResults.ShopPurchaseNotifications() : Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
             }

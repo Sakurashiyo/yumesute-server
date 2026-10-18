@@ -99,7 +99,10 @@ static partial class LiveUnitRules
         {
             actors, timing, senses, startEffects, starAct,
             checked(actors.Values.Cast<object?[]>().Sum(actor => I(((object?[])actor[8]!)[3]))),
-            requiredLights.Sum(), 1000, false, 0, auto ? 0d : 1d,
+            requiredLights.Sum(), 1000, false,
+            checked((int)(passives.Values.SelectMany(effects => effects).Where(effect => I(effect[1]) == 32)
+                .Sum(effect => EffectValue(effect, 1)) / 100d)),
+            LiveBaseScoreRules.Coefficient(PlayerProgressionRules.Charts[chartId].Difficulty, auto),
             Random.Shared.NextInt64(1, long.MaxValue)
         };
     }

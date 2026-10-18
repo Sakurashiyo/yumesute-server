@@ -27,6 +27,8 @@
 
 `user_game_states` 保存等级、经验、体力、新手教程状态、已读标记、登录时间等游戏进度；`stamina_jewel_recovery_count` 对应官方 `key0` 中的钻石恢复体力次数。
 
+`stamina_recovery_checkpoint_at` 保存自然恢复计时起点；每 80 秒恢复 1 点，完整周期在玩家行锁内入账，保留未满周期的余秒，并限制在 `max_stamina`。已超过上限的体力不截断。新增列以迁移时间初始化旧存档，不把历史恢复记录误算成离线收益。满体力开始消耗时重置起点，使用恢复道具或钻石时同步重置。客户端 User key4 为 `MaxStaminaRestoredAt`，下发的是计时起点加尚缺体力对应的恢复时长，不能直接使用历史 `stamina_recovered_at`。
+
 `user_profiles` 保存玩家昵称、简介、主页角色、称号装饰和公开资料设置；`updated_at` 记录资料最后更新时间，启动迁移会为旧数据库补齐该列。
 
 ## 角色相关表
@@ -152,9 +154,13 @@ erDiagram
 
 `user_live_play_results` 保存 key 24 的谱面成绩：`achievement_rate` 为最佳达成率，`notation_rate` 为最佳谱面 rate，`clear_lamp` 为通关灯，`rate_grade` 为评级；旧分数字段保留，不将其误当成达成率。玩家 rating 从难度 1–4 的最高 30 个谱面 rate 汇总，没有成绩时为 0。自动演出不写入手动成绩；未通关或最终 LIFE 为 0 时不产生谱面 rate。计算规格按用户指定的 https://gamerch.com/world-dai-star/786842 实现。
 
-`user_live_sessions` 记录每个玩家当前普通演出的谱面及自动演出标志，缓存 MessagePack 结算结果和提交摘要，保证重复结算不重复发放奖励。开始新演出会替换当前记录；旧客户端的 Finish 请求没有演出 ID，不能区分新演出开始后迟到的旧结算请求。
+`user_live_sessions` 记录每个玩家当前演出的谱面、自动演出标志、MessagePack 开演快照 `start_snapshot` 和请求摘要 `start_hash`，缓存结算结果和提交摘要，保证重复结算不重复发放奖励。快照版本 1 为 `[1, ordinary, baseStamina, requestedMagnification, effectiveMagnification, staminaBefore, liveUnit]`；普通演出在玩家行锁内按实际可用体力确定倍率并立即扣除，同一未完成开演请求重放原快照，不重复扣费。结束或退出后可以开始下一场；退出不退还开演体力。不同开演请求会替换当前记录；客户端的 Finish 请求没有演出 ID，不能区分新演出开始后迟到的旧结算请求。
 
-`user_game_states.rank_limit` 是等级上限，初始 50，和 `max_stamina` 分开存储。升级按 `PlayerRankMaster` 消耗经验并恢复体力，达到上限后经验最多保留至门槛减 1。旧存档中超出门槛的经验在读取前归一化，不清空存档。奖励数量和基础经验暂时仍采用既有普通演出兼容值，不是完整官服奖励计算器。
+`user_game_states.rank_limit` 是等级上限，初始 50，和 `max_stamina` 分开存储。升级按 `PlayerRankMaster` 消耗经验并恢复体力，达到上限后经验最多保留至门槛减 1。旧存档中超出门槛的经验在读取前归一化，不清空存档。普通演出基础经验等于快照中的实际体力消耗；结算只累加升级恢复体力，不再次扣除消耗。开演响应同步 union0。
+
+普通材料和金币采用歌曲基础体力与 0～10 档奖励倍率计算，材料按 `LiveSettingMaster` 所引用的 `LiveDropFrameGroupMaster` 筛选普通奖励框、分数门槛、体力条件和有效期，数量最终向下取整。多个框掉落相同道具时累加持有量，金币同时写入两份既有余额。候选没有独立权重时使用本服等概率选择，随机饰品框不发放。奖励加成叠加和高分段行为仍待核实；Mission Pass 沿用既有积分策略，特殊演出保留旧奖励路径。
+
+普通手动演出在支持的完整逐音符结算中，使用开演队伍快照重算基础分，再保留既有 Sense 与 Star Act 记录加分；动态基础分效果、中途生命归零、额外加分记录和汇总结算仍沿用原有分数处理。启动迁移仅追加两个可空快照列；旧版未完成会话需要重新开演，旧版已完成会话仍可重放结算缓存。公式、边界与回归记录见 `devlog/2026-10-18-live-settlement.md`。
 
 `user_live_music_states` 保存 union25 的乐曲状态，唯一键为 `(userId, music_master_id)`，实例 ID 按玩家和歌曲稳定生成。`is_unlocked` 对应 Music key9 的 `IsPossession`；新增 `stella_released` 对应 key5，`olivier_release_status` 对应 key8（0 未开放、1 可挑战、2 可购买、3 已购买）。启动执行 `MusicUnlockSchema` 非破坏迁移，保留已有拥有状态；默认歌曲初始化为已拥有，付费歌曲需要实际兑换。
 

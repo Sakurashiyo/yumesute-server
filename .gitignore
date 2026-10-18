@@ -15,6 +15,8 @@ bin/
 obj/
 build-check-current/
 AdminAssets/
+tools/
+tests/
 
 # Local IDE/editor state
 .vs/
@@ -38,3 +40,4 @@ masterdata-export/
 !SCHEMA.MD
 !**/SCHEMA.md
 !**/SCHEMA.MD
+!devlog/*.md

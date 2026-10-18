@@ -114,7 +114,7 @@ sealed partial class UserDataService
 
     static async Task<object?[]> ReadPermanentMarketDataAsync(NpgsqlConnection connection,long userId)
     {
-        await using var command = new NpgsqlCommand("select union_key,payload::text from user_raw_union_states where \"userId\"=$1 and union_key in (28,45,129,149,182) order by union_key,object_key",connection);
+        await using var command = new NpgsqlCommand("select union_key,payload::text from user_raw_union_states where \"userId\"=$1 and union_key in (28,44,45,129,149,182) order by union_key,object_key",connection);
         command.Parameters.AddWithValue(userId);
         var data = new List<object?>();
         static object Read(JsonElement field) => field.ValueKind switch

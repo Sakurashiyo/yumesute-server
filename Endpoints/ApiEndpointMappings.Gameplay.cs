@@ -64,7 +64,7 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-ghost-live payload={ValueFormatter.Format(body)}");
-            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, buildUnit: true);
+            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, buildUnit: true, ordinaryRewards:false);
             await codec.WriteApiFramesAsync(
                 context,
                 unit,
@@ -79,7 +79,7 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-multi-live payload={ValueFormatter.Format(body)}");
             if (body is object?[] multi && multi.Length >= 3)
-                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, multi[0], null, null, multi[2], 1, null, false }, validateMusicUnlock:false);
+                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, multi[0], null, null, multi[2], 1, null, false }, validateMusicUnlock:false, ordinaryRewards:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.MultiLiveStartResult(body),
@@ -93,7 +93,7 @@ static partial class ApiEndpointMappings
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-start-music-course-live payload={ValueFormatter.Format(body)}");
-            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, buildUnit: true);
+            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, buildUnit: true, ordinaryRewards:false);
             await codec.WriteApiFramesAsync(
                 context,
                 unit,
@@ -108,7 +108,7 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-triple-cast-live payload={ValueFormatter.Format(body)}");
             if (body is object?[] triple && triple.Length >= 1)
-                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, triple[0], null, null, true, 1, null, false }, validateMusicUnlock:false);
+                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, triple[0], null, null, true, 1, null, false }, validateMusicUnlock:false, ordinaryRewards:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.TripleCastLiveStartResult(body),
@@ -135,7 +135,7 @@ static partial class ApiEndpointMappings
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-start-trial-party-event-stage payload={ValueFormatter.Format(body)}");
-            await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false);
+            await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, ordinaryRewards:false);
             await codec.WriteApiFramesAsync(
                 context,
                 GameResults.LiveStartResult(body),
@@ -162,6 +162,7 @@ static partial class ApiEndpointMappings
         app.MapMethods("/localap/api/Lives/Retire", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
+            await state.UserDataService.RetireLiveAsync(context);
             await logger.LogAsync($"lives-retire payload={ValueFormatter.Format(body)}");
             await codec.WriteApiFramesAsync(
                 context,

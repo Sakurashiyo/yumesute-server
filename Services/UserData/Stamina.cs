@@ -2,6 +2,34 @@ using Npgsql;
 
 sealed partial class UserDataService
 {
+    const int StaminaRecoverySeconds = 80;
+
+    static async Task RefreshStaminaAsync(NpgsqlConnection connection, long userId, NpgsqlTransaction? transaction = null)
+    {
+        // 单条语句内锁定余额并推进完整恢复周期，并发读取不能重复补发。
+        await using var command = new NpgsqlCommand(
+            """
+            with current_state as materialized (
+              select "userId", stamina, max_stamina, stamina_recovery_checkpoint_at, now() as current_time,
+                least(max_stamina - stamina,
+                  greatest(0, floor(extract(epoch from (now() - stamina_recovery_checkpoint_at)) / $2)))::integer as recovered
+              from user_game_states where "userId"=$1 and stamina < max_stamina for update
+            )
+            update user_game_states as target
+            set stamina = current_state.stamina + current_state.recovered,
+                stamina_recovery_checkpoint_at = case
+                  when current_state.stamina + current_state.recovered >= current_state.max_stamina then current_state.current_time
+                  else current_state.stamina_recovery_checkpoint_at + current_state.recovered * $2 * interval '1 second'
+                end,
+                updated_at = now()
+            from current_state
+            where target."userId" = current_state."userId" and current_state.recovered > 0
+            """, connection, transaction);
+        command.Parameters.AddWithValue(userId);
+        command.Parameters.AddWithValue(StaminaRecoverySeconds);
+        await command.ExecuteNonQueryAsync();
+    }
+
     public async Task<object?[]> UseStaminaRecoveryItemsAsync(HttpContext context, object? payload)
     {
         var userId = await GetCurrentUserIdAsync(context);
@@ -40,6 +68,7 @@ sealed partial class UserDataService
                     update user_game_states
                     set stamina = stamina + $2,
                         stamina_recovered_at = now(),
+                        stamina_recovery_checkpoint_at = now(),
                         updated_at = now()
                     where "userId" = $1
                     """,
@@ -88,6 +117,7 @@ sealed partial class UserDataService
                       else greatest(paid_jewel - ($4 - free_jewel), 0)
                     end,
                     stamina_recovered_at = now(),
+                    stamina_recovery_checkpoint_at = now(),
                     updated_at = now()
                 where "userId" = $1
                 """,

@@ -29,7 +29,7 @@ sealed partial class UserDataService
             .Where(item => item[0] is int type && type == key).Select(item => (object?[])item[1]!).ToArray();
         var availableCards = Objects(4).Select(card => Convert.ToInt64(card[0])).ToHashSet();
         var accessories = Objects(26).Select(item => Convert.ToInt64(item[0])).ToHashSet();
-        var posters = Objects(28).Select(item => Convert.ToInt64(item[0])).ToHashSet();
+        var posters = Objects(PosterDataObjectUnionKey).Select(item => Convert.ToInt64(item[0])).ToHashSet();
         var leader = GetNullableLong(values, 5);
         if (leader is < 1 or > 5) throw new BadHttpRequestException(PartyInvalid, 400);
         var members = slots.Select(slot =>
@@ -95,7 +95,8 @@ sealed partial class UserDataService
             update.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = (object?)member.Accessory ?? DBNull.Value });
             update.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = (object?)member.Poster ?? DBNull.Value });
             update.Parameters.AddWithValue(member.Flags); await update.ExecuteNonQueryAsync();
-            changes.Add(DataObject(7,new object?[] { member.SlotId,partyId,old[2],member.Character,member.Accessory,member.Poster,member.Flags }));
+            // 返回 PartySlot 的海报、饰品顺序与编辑请求相反。
+            changes.Add(DataObject(7,new object?[] { member.SlotId,partyId,old[2],member.Character,member.Poster,member.Accessory,member.Flags }));
         }
         // 现有 party_type 列承载客户端 Party.Key(3)，即队长位置，沿用原存档映射。
         await using (var update = new NpgsqlCommand("update user_party_groups set party_type=$3,updated_at=now() where id=$1 and \"userId\"=$2",connection,transaction))

@@ -76,7 +76,8 @@ sealed partial class UserDataService
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
         return (await ReadLiveMusicStatesAsync(connection,userId)).Select(row=>DataObject(25,row))
-            .Append(DataObject(130,await ReadLiveAchievementAsync(connection,userId))).ToArray();
+            .Append(DataObject(130,await ReadLiveAchievementAsync(connection,userId)))
+            .Append(DataObject(0,await ReadUserAsync(connection,userId))).ToArray();
     }
 
     static async Task RecordDifficultyUnlockAsync(NpgsqlConnection connection,NpgsqlTransaction transaction,long userId,

@@ -716,7 +716,7 @@ sealed partial class UserDataService
         // expected by the client's data synchronizer.
         int[] inventoryTypeOrder = { 28, 120, 4, 5, 96, 43, 101, 177, 179, 139, 183, 94, 150, 41, 27, 100, 111, 106, 107, 168, 171, 170, 176, 39, 24, 25, 90, 147, 109 };
         int[] missionTypeOrder = { 145, 146, 97, 48, 122, 154, 193, 6, 7, 166, 167, 123, 124, 125, 131, 174, 0, 1, 3, 2, 66, 67, 128, 138, 148 };
-        int[] accountTypeOrder = { 47, 45, 11, 65, 64, 102, 129, 182 };
+        int[] accountTypeOrder = { 47, 44, 45, 11, 65, 64, 102, 129, 182 };
         int[] shopTypeOrder = { 108, 149, 95 };
 
         static int? UnionKey(object? item)
@@ -1066,13 +1066,17 @@ sealed partial class UserDataService
 
     async Task<object?[]> ReadUserAsync(NpgsqlConnection connection, long userId)
     {
+        await RefreshStaminaAsync(connection, userId);
         await using var command = new NpgsqlCommand(
             """
             select user_accounts.id,
                    user_game_states.rank,
                    user_game_states.exp,
                    user_game_states.stamina,
-                   user_game_states.stamina_recovered_at,
+                   case when user_game_states.stamina >= user_game_states.max_stamina then now()
+                     else user_game_states.stamina_recovery_checkpoint_at
+                       + (user_game_states.max_stamina - user_game_states.stamina) * $2 * interval '1 second'
+                   end,
                    user_game_states.free_jewel,
                    user_game_states.paid_jewel,
                    user_game_states.coin,
@@ -1093,6 +1097,7 @@ sealed partial class UserDataService
             """,
             connection);
         command.Parameters.AddWithValue(userId);
+        command.Parameters.AddWithValue(StaminaRecoverySeconds);
 
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) return GameResults.UserData()[0] as object?[] ?? Array.Empty<object?>();
@@ -1107,7 +1112,8 @@ sealed partial class UserDataService
             reader.GetInt32(1),
             reader.GetInt32(2),
             reader.GetInt32(3),
-            reader.GetDateTime(4),
+            // 客户端 TimeAdjuster.Now 用 JST 墙上时间直接相减，此字段必须使用相同的时钟刻度。
+            reader.GetDateTime(4).Add(JapanStandardTimeOffset),
             reader.GetInt32(5),
             reader.GetInt32(6),
             reader.GetInt32(7),
@@ -1726,7 +1732,7 @@ sealed partial class UserDataService
     {
         await using var command = new NpgsqlCommand(
             """
-            select id, party_id, slot_number, character_card_id, accessory_id, poster_id, position
+            select id, party_id, slot_number, character_card_id, poster_id, accessory_id, position
             from user_party_slots
             where "userId" = $1
             order by party_id, slot_number
