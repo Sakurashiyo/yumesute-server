@@ -94,6 +94,7 @@ sealed partial class UserDataService
                 if(stored.Cast<object?[]>().Any(r=>Convert.ToInt32(r[0])==PosterDataObjectUnionKey && Convert.ToInt64(((object?[])r[1]!)[1])==entry.MasterId))poster[3]=Convert.ToInt32(poster[3])+1;
                 await SavePermanentMarketDataAsync(connection,transaction,userId,LegacyPosterStorageKey,entry.MasterId.ToString(),poster);
                 changed.Add(DataObject(PosterDataObjectUnionKey,poster));
+                changed.AddRange(await GrantPosterCostumesAsync(connection,transaction,userId,entry.MasterId,Convert.ToInt32(poster[3])));
                 return GachaRules.Received(3,entry.MasterId,1,phase:Convert.ToInt32(poster[3]));
             }
             if(Convert.ToInt32(poster[3])>entry.MaxPhase)throw new InvalidOperationException("海报存档超过突破上限");

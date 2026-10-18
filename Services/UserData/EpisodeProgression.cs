@@ -55,6 +55,7 @@ sealed partial class UserDataService
                     afterPhase = Convert.ToInt32(poster[3]);
                     await SavePermanentMarketDataAsync(connection, transaction, userId, LegacyPosterStorageKey, reward.MasterId.ToString(), poster);
                     present.Add(DataObject(PosterDataObjectUnionKey, poster));
+                    present.AddRange(await GrantPosterCostumesAsync(connection, transaction, userId, reward.MasterId, Convert.ToInt32(poster[3])));
                     break;
                 case 8:
                     if (reward.Quantity != 1) throw new InvalidOperationException("剧情铭牌奖励数量发生变化");

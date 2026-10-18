@@ -82,15 +82,23 @@ static partial class ApiEndpointMappings
 
         app.MapMethods("/localap/api/Posters/{posterId:long}/LevelUp/{levelTo:int}", new[] { "GET", "POST" }, async (HttpContext context, long posterId, int levelTo) =>
         {
-            var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
-            await logger.LogAsync($"posters-level-up posterId={posterId} levelTo={levelTo} payload={ValueFormatter.Format(body)}");
-            await codec.WriteApiFramesAsync(
-                context,
-                new object?[] { true },
-                GameResults.PosterLevelUpPresentData(posterId, levelTo),
-                Array.Empty<object?>(),
-                new object?[] { new object?[] { 0, new object?[] { 15, 15 } } },
-                "posters-level-up-five-frame");
+            try
+            {
+                if (context.Request.Query.ContainsKey("uPosterId") &&
+                    (!long.TryParse(context.Request.Query["uPosterId"], out var queryId) || queryId != posterId) ||
+                    context.Request.Query.ContainsKey("levelTo") &&
+                    (!int.TryParse(context.Request.Query["levelTo"], out var queryLevel) || queryLevel != levelTo))
+                    throw new BadHttpRequestException(PosterProgressionErrors.Invalid, 400);
+                var present = await state.UserDataService.LevelUpPosterAsync(context, posterId, levelTo);
+                await codec.WriteApiFramesAsync(context, new object?[] { true }, present,
+                    Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
+            }
+            catch (BadHttpRequestException error) when (error.Message is PosterProgressionErrors.Invalid
+                or PosterProgressionErrors.NotOwned or PosterProgressionErrors.LevelLimit or PosterProgressionErrors.InsufficientItems)
+            {
+                await logger.LogAsync($"level=WARN operation=poster-level-up posterId={posterId} requestId={context.TraceIdentifier} errorCode={error.Message} outcome=failed");
+                await codec.WriteApiErrorAsync(context, error.Message, error.StatusCode);
+            }
         });
 
         app.MapMethods("/localap/api/Shops/ViewPage", new[] { "GET", "POST" }, async context =>

@@ -20,6 +20,15 @@ sealed partial class UserDataService
             return new LiveUnitRules.Member(Convert.ToInt32(slot[2]), card,
                 (object?[])statuses[Convert.ToInt64(card[0]).ToString(System.Globalization.CultureInfo.InvariantCulture)]!);
         }).ToArray();
-        return LiveUnitRules.Build(members, Convert.ToInt32(party[3]), chartId, auto);
+        var unit = LiveUnitRules.Build(members, Convert.ToInt32(party[3]), chartId, auto);
+        var chart = PlayerProgressionRules.Charts[chartId];
+        // 隐藏挑战在点击开演时才切到 OLIVIER，客户端需要区分首次挑战和已购买谱面。
+        if (chart.Difficulty == 5 && !auto)
+        {
+            var music = (await ReadLiveMusicStatesAsync(connection, userId))
+                .Single(row => Convert.ToInt64(row[2]) == chart.MusicMasterId);
+            unit[8] = music[9] is true && Convert.ToInt32(music[8]) == 1;
+        }
+        return unit;
     }
 }

@@ -199,6 +199,12 @@ union130 的 `LiveAchievement` 按存档计算 `[userId, 已购买OLIVIER数量,
 
 剧情进度：`user_episode_read_states` 一条记录表示已读，key95第二字段为 `has_read_all`（非 is_new）。新增列默认false，ReadAll只能升级为true；重复Read不降级。前置剧情、一次性奖励和已读写入在玩家状态行锁与同一事务内处理。主数据奖励类型1/13发放道具/免费宝石，3海报持有状态保留旧版 raw 存档编号28，读取时映射为客户端 Poster union11（客户端28实际为 AccessoryEffectMaster），不批量改写存档。8铭牌保存在45。两份宝石余额同步，重登录包含11与95。旧教程已读记录不重复补发奖励。
 
+海报升级按实例 ID 定位已拥有的 Poster，只修改等级并保留主数据、突破及其他字段。`PosterMaster` 的稀有度、升级模式及最大突破数和 `PosterLevelPatternGroupMaster` 决定等级上限与逐级材料；等级上限为 `rarity * 2 + (phase <= 4 ? phase : phase * 2 - 4)`。玩家行锁内扣费与保存同一事务，重复或迟到的目标等级不降级、不重复扣费；不足材料时全部回滚。错误码为 `POSTER_INVALID_REQUEST`（400）、`POSTER_NOT_OWNED`（404）、`POSTER_LEVEL_LIMIT` / `POSTER_INSUFFICIENT_ITEMS`（409）。
+
+海报的服装奖励按 `PosterMaster.Costumes` 中已达到的突破阶段写入 `user_character_costumes`，使用已有 `(userId,costume_master_id)` 唯一约束保证幂等，响应包含 union43。共用海报发奖入口覆盖抽卡、兑换和 Mission Pass，剧情海报同样处理；登录按现存海报的真实突破阶段补齐旧服装，不推断未保存的升级或突破。
+
+普通 OLIVIER 开演响应的 `LiveUnit` key8 根据实际歌曲状态生成：手动且拥有歌曲、状态为 1（可挑战）时为 true；STELLA、自动和已购买 OLIVIER 为 false。客户端长按 STELLA 后仅设置本地 `IsOlivierChallenge` 并播放动画，编队仍显示 STELLA；`PartyFinalConfirmationModel.StartLiveAsync`（2.31.1 RVA `0xAB89768`）在开演时选择同曲 difficulty5 并关闭自动模式。
+
 ## Mission Pass
 
 `user_mission_passes` 按 `("userId", mission_pass_master_id)` 唯一保存普通/SP 已领取阶段及各自已领取循环奖励数，账号删除时级联清理。积分复用 `user_item_possessions` 中的 432607；既有积分直接保留，旧版固定领奖响应没有可靠领取记录，首次升级不据此推断已领取阶段。

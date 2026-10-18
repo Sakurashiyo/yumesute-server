@@ -35,7 +35,7 @@ sealed partial class UserDataService
             return GameResults.UserData();
         }
 
-        await EnsureDefaultUserDataAsync(userId.Value);
+        await EnsureDefaultUserDataAsync(userId.Value, context.RequestServices?.GetService<ILogger<UserDataService>>());
         return await ReadUserDataAsync(userId.Value);
     }
 
@@ -54,7 +54,7 @@ sealed partial class UserDataService
         var userId = await GetCurrentUserIdAsync(context);
         if (userId is null) return new object?[] { GameResults.UserData()[0] };
 
-        await EnsureDefaultUserDataAsync(userId.Value);
+        await EnsureDefaultUserDataAsync(userId.Value, context.RequestServices?.GetService<ILogger<UserDataService>>());
         await using var connection = await database.OpenConnectionAsync();
         var presentData = new List<object?>();
         presentData.AddRange((await ReadMissionsAsync(connection, userId.Value)).Select(row => DataObject(48, row)));
@@ -557,7 +557,7 @@ sealed partial class UserDataService
         }
     }
 
-    async Task EnsureDefaultUserDataAsync(long userId)
+    async Task EnsureDefaultUserDataAsync(long userId, ILogger? logger = null)
     {
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
@@ -569,7 +569,10 @@ sealed partial class UserDataService
             await NormalizeRankAsync(connection, transaction, userId);
             await NormalizeCharacterGrowthAsync(connection, transaction, userId);
             await SynchronizeMusicUnlocksAsync(connection, transaction, userId);
+            var posterCostumes = await SynchronizePosterCostumesAsync(connection, transaction, userId);
             await transaction.CommitAsync();
+            if (posterCostumes > 0)
+                logger?.LogInformation("补发海报服装 operation=poster-costume-reconcile userId={UserId} count={Count} outcome=success", userId, posterCostumes);
         }
         catch
         {

@@ -139,13 +139,4 @@ static partial class GameResults
         };
     }
 
-    public static object?[] PosterLevelUpPresentData(long posterId, int levelTo)
-    {
-        return new object?[]
-        {
-            new object?[] { 27, new object?[] { Random.Shared.Next(151000000, 151999999), 130061, Math.Max(0, 40 - (levelTo * 5)) } },
-            new object?[] { 11, new object?[] { posterId, 230940, levelTo, 0, 0, 0, false, 0 } },
-            new object?[] { 67, new object?[] { Random.Shared.Next(5000000, 5999999), 0.4, 0.1 } }
-        };
-    }
 }

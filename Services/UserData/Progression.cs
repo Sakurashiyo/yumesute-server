@@ -40,8 +40,8 @@ sealed partial class UserDataService
         await command.ExecuteNonQueryAsync();
         await transaction.CommitAsync();
         if (unit is not null) context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
-            "生成演出编队 operation=live-unit userId={UserId} partyId={PartyId} chartId={ChartId} totalStatus={TotalStatus} outcome=success",
-            userId, GetLong(start, 0), chartId, unit[5]);
+            "生成演出编队 operation=live-unit userId={UserId} partyId={PartyId} chartId={ChartId} totalStatus={TotalStatus} firstPlayOlivier={FirstPlayOlivier} outcome=success",
+            userId, GetLong(start, 0), chartId, unit[5], unit[8]);
         return unit;
     }
 

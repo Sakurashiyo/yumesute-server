@@ -30,6 +30,7 @@
     <EmbeddedResource Include="masterdata-export/tables/CharacterEpisodeMaster.json" LogicalName="Episode.CharacterEpisodeMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/EpisodeRewardPackageMaster.json" LogicalName="Episode.EpisodeRewardPackageMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/PosterMaster.json" LogicalName="Shop.PosterMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/PosterLevelPatternGroupMaster.json" LogicalName="Progression.PosterLevelPatternGroupMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterBloomBonusGroupMaster.json" LogicalName="Status.CharacterBloomBonusGroupMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/EffectMaster.json" LogicalName="Status.EffectMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/JewelShopItemMaster.json" LogicalName="Shop.JewelShopItemMaster.json" />
