@@ -1,6 +1,6 @@
 static class GameOperationsValidation
 {
-    static readonly Lazy<AdminSaveCatalog> Inventory = new(() => new AdminSaveCatalog());
+    static readonly Lazy<GameInventoryCatalog> Inventory = new(() => new GameInventoryCatalog());
     static readonly Lazy<HashSet<long>> Posters = new(() => GachaRules.ReadRows("Shop.PosterMaster.json")
         .Cast<object?[]>().Select(row => GachaRules.Long(row[0])).ToHashSet());
 
@@ -32,10 +32,23 @@ static class GameOperationsValidation
                 Invalid("每个循环阶段必须有一项普通奖励");
             Reward(rewards[0]);
         }
-        foreach (var setting in config.LoginBonuses.Values)
+        foreach (var (id, setting) in config.LoginBonuses)
         {
             if (setting is null) Invalid("缺少登录奖励配置");
             Period(setting!.StartsAt, setting.EndsAt);
+            var source = LoginBonusRules.Rewards.Single(row => row.Id == id);
+            var type = setting.ThingType ?? source.ThingType;
+            var masterId = setting.MasterId ?? source.MasterId;
+            var quantity = setting.Quantity ?? source.Quantity;
+            if ((setting.Days ?? source.Days) is < 1 or > 366 || quantity is < 1 or > 1000000)
+                Invalid("登录奖励天数必须为 1–366，数量必须为 1–1000000");
+            if (type == 1)
+            {
+                if (!Inventory.Value.Items.TryGetValue(masterId, out var item) || quantity > item.MaxQuantity)
+                    Invalid("登录奖励道具或数量无效");
+            }
+            else if (type is not (12 or 13) || masterId != 0)
+                Invalid("登录奖励仅支持道具、金币和免费宝石，货币主数据 ID 必须为 0");
         }
     }
 

@@ -1,10 +1,10 @@
 using Npgsql;
 
-// 管理后台和抽卡共用持有卡写入，确保基础角色、默认服装和育成状态一起创建。
+// 抽卡持有卡写入，确保基础角色、默认服装和育成状态一起创建。
 static class CardInventoryWriter
 {
     public static async Task<bool> GrantAsync(NpgsqlConnection connection,NpgsqlTransaction transaction,long userId,
-        AdminSaveCatalog catalog,AdminSaveCatalog.Entry card)
+        GameInventoryCatalog catalog,GameInventoryCatalog.Entry card)
     {
         var character=catalog.Bases[card.BaseId];
         if(!catalog.Costumes.ContainsKey(character.DefaultCostume))throw new InvalidOperationException("默认服装主数据缺失");

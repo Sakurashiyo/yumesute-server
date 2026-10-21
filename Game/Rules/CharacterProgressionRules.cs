@@ -4,7 +4,7 @@ static class CharacterProgressionRules
 {
     public const int LevelCap = 50;
     static readonly Dictionary<long, (int Experience, decimal Bonus)> Items = ReadItems();
-    static readonly Dictionary<long, int> Rarities = Read("AdminMaster.CharacterMaster.json").ToDictionary(r => r[0].GetInt64(), r => r[5].GetInt32());
+    static readonly Dictionary<long, int> Rarities = Read("InventoryMaster.CharacterMaster.json").ToDictionary(r => r[0].GetInt64(), r => r[5].GetInt32());
     static readonly int[] Costs = Read("Progression.CharacterLevelMaster.json").OrderBy(r => r[0].GetInt32()).Select(r => r[1].GetInt32()).ToArray();
     public static IEnumerable<long> CharacterMasterIds => Rarities.Keys;
     public static bool TryGetItemExperience(long id, out int experience)
@@ -67,4 +67,10 @@ static class CharacterProgressionErrors
     public const string ItemInsufficient = "CHARACTER_EXPERIENCE_ITEM_INSUFFICIENT";
     public const string LevelCap = "CHARACTER_EXPERIENCE_LEVEL_CAP";
     public const string ExcessItems = "CHARACTER_EXPERIENCE_EXCESS_ITEMS";
+}
+
+static class CharacterFavoriteErrors
+{
+    public const string InvalidRequest = "CHARACTER_FAVORITE_INVALID_REQUEST";
+    public const string CharacterMissing = "CHARACTER_FAVORITE_CHARACTER_MISSING";
 }

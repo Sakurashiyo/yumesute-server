@@ -20,7 +20,7 @@ static class GachaRules
     }
     public sealed record Detail(Pool Pool, int Count) { public int Cost => Count * 300; }
     public static readonly object?[] SourceGachas = ReadRows("Gacha.GachaMaster.json");
-    static readonly Dictionary<long, object?[]> Characters = ReadRows("AdminMaster.CharacterMaster.json").Cast<object?[]>().ToDictionary(row=>Long(row[0]));
+    static readonly Dictionary<long, object?[]> Characters = ReadRows("InventoryMaster.CharacterMaster.json").Cast<object?[]>().ToDictionary(row=>Long(row[0]));
     static readonly Dictionary<long, object?[]> Posters = ReadRows("Shop.PosterMaster.json").Cast<object?[]>().ToDictionary(row=>Long(row[0]));
     public static readonly Pool[] Pools = [BuildPool(1888,2,411167),BuildPool(2860,3,412155)];
     public static readonly Pool[] AllPools = Pools.Concat(HistoricalGachaResources.Ids.Select(BuildHistoricalPool)).ToArray();

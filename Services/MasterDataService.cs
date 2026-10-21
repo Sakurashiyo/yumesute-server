@@ -19,16 +19,6 @@ sealed class MasterDataService
         return GachaMasterDataOverlay.Apply(source, operations);
     }
 
-    public async Task ValidateOperationsAsync(GameOperationsConfiguration configuration)
-    {
-        GameOperationsValidation.Validate(configuration);
-        foreach (var pool in GachaRules.AllPools)
-            if (configuration.Gachas[pool.Id] && !HistoricalGachaResources.Available(pool,config.ResourcesRoot))
-                throw new GameOperationsException(GameOperationsErrors.Invalid,$"卡池 {pool.Id} 缺少可下发资源，无法开启");
-        var source = await GetSourceAsync();
-        _ = GachaMasterDataOverlay.Build(await File.ReadAllBytesAsync(source.LocalFilePath), configuration);
-    }
-
     GameOperationsConfiguration FilterResources(GameOperationsConfiguration configuration) => configuration with {
         Gachas = configuration.Gachas.ToDictionary(pair => pair.Key, pair => pair.Value
             && HistoricalGachaResources.Available(GachaRules.AllPools.Single(pool => pool.Id == pair.Key),config.ResourcesRoot))

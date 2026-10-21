@@ -10,6 +10,8 @@ static class RealtimeHubProtocol
     public const string InviteRoomUnavailable = "REALTIME_INVITE_ROOM_UNAVAILABLE";
     public const string InviteTooFrequent = "REALTIME_INVITE_TOO_FREQUENT";
     public const string NotJoined = "REALTIME_NOT_JOINED";
+    public const string RoomStateConflict = "REALTIME_ROOM_STATE_CONFLICT";
+    public const string HostRequired = "REALTIME_HOST_REQUIRED";
     public const string MethodUnimplemented = "REALTIME_METHOD_UNIMPLEMENTED";
     public const string AuthRequired = "REALTIME_AUTH_REQUIRED";
     public const string AuthInvalid = "REALTIME_AUTH_INVALID";

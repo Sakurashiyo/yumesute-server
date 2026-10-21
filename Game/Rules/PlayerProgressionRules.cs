@@ -87,4 +87,5 @@ static class LiveProgressionErrors
     public const string InvalidJudges = "LIVE_INVALID_JUDGES";
     public const string SessionMissing = "LIVE_SESSION_MISSING";
     public const string SessionConflict = "LIVE_SESSION_CONFLICT";
+    public const string GhostUnavailable = "LIVE_GHOST_UNAVAILABLE";
 }

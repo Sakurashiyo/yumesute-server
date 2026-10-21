@@ -35,9 +35,11 @@
 | 抽卡点数兑换 | ✅ | Google / Apple 账号关联 | 🔴 |
 | 每日免费礼包 | ✅ | 账号删除 | 🔴 |
 | 常设商店兑换 | ✅ | 社团排行榜 | ✅ |
-| 本机存档管理 | ✅ | 社团管理、申请与邀请 | ✅ |
+| 独立管理后台 | ✅ | 社团管理、申请与邀请 | ✅ |
 | 社团支援捐赠与上限解放 | ✅ | 社团剧场体力 | ✅ |
-| Mission Pass | ✅ | | |
+| Mission Pass | ✅ | 公演（Auditions） | 🟡 |
+
+公演已接入实际开演、分数与 Star Act 阶段判定、首次通关奖励、进度持久化、通关队伍展示和本人最高分编队复制。官方队伍选样、跳过、解锁链及等级上限联动尚未完整还原；本服按阶段展示最高分的五支真实队伍。协议依据和范围见 [`devlog/2026-10-20-auditions.md`](devlog/2026-10-20-auditions.md)。
 
 ## 运行要求
 
@@ -66,7 +68,7 @@ dotnet restore
 dotnet run --project SiriusLocalServer.csproj
 ```
 
-启动时会执行数据库迁移。健康检查地址为 `http://127.0.0.1:8787/health`；本机存档管理页面为 `http://127.0.0.1:8787/admin/save-editor/`。
+启动时会执行数据库迁移。健康检查地址为 `http://127.0.0.1:8787/health`。
 
 realtime 暂时与 API 共用进程，但实时连接、大厅操作和 gRPC 错误独立写入可执行文件目录的 `realtime.log`。单独查看日志的方法见 [`Realtime/README.md`](Realtime/README.md)。
 

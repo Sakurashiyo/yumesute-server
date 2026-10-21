@@ -21,6 +21,8 @@ static class CharacterGrowthSchema
                     update user_character_cards set display_awakening_status = true where awakening > 0;
                 end if;
             end $$;
+            alter table user_character_cards
+                add column if not exists is_favorite boolean not null default false;
             """, connection, transaction);
         await command.ExecuteNonQueryAsync();
         // 清理旧版误开启的低稀有度卡面标记，保留觉醒阶段和四星卡的手动选择。

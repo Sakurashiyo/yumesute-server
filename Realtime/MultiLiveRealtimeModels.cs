@@ -130,6 +130,7 @@ sealed class MultiLiveUser
     public int Life { get; set; } = 1000;
     public ComboTypes ComboType { get; set; }
     public int ComboCount { get; set; }
+    public bool EnteredFinalResult { get; set; }
 }
 
 sealed class MultiLiveJoinResult
@@ -199,6 +200,9 @@ sealed class MultiLiveRoomState
     public int HostMemberId { get; set; } = 1;
     public bool IsPrivate { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public long MusicMasterId { get; set; }
+    public bool ResultsPublished { get; set; }
+    public string? ContinueHallId { get; set; }
     public Dictionary<int, MultiLiveUser> Users { get; } = new();
 
     public MultiLiveFetchUsersResult ToFetchUsersResult()

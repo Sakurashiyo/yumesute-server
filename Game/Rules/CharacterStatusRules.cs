@@ -5,7 +5,7 @@ static class CharacterStatusRules
     sealed record Rank(int Level, long RequiredScore, float Bonus);
     static readonly Rank[] Ranks = Read("CharacterMission.CharacterStarRankMaster").Select(row =>
         new Rank(row[0].GetInt32(), row[2].GetInt64(), row[3].GetSingle())).ToArray();
-    static readonly Dictionary<long, JsonElement> Cards = Read("AdminMaster.CharacterMaster").ToDictionary(row => row[0].GetInt64());
+    static readonly Dictionary<long, JsonElement> Cards = Read("InventoryMaster.CharacterMaster").ToDictionary(row => row[0].GetInt64());
     static readonly Dictionary<int, int> Levels = Read("Progression.CharacterLevelMaster").ToDictionary(row => row[0].GetInt32(), row => row[2].GetInt32());
     static readonly Dictionary<long, JsonElement> Blooms = Read("Status.CharacterBloomBonusGroupMaster").ToDictionary(row => row[0].GetInt64());
     static readonly Dictionary<long, JsonElement> Effects = Read("Status.EffectMaster").ToDictionary(row => row[0].GetInt64());

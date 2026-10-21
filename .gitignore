@@ -7,8 +7,7 @@ server-*.log
 *.cmd
 *.json
 *.jsonl
-!AdminWeb/notification-banners.json
-!AdminWeb/historical-gachas.json
+!Game/Data/historical-gachas.json
 
 # Build output
 bin/
@@ -16,7 +15,8 @@ obj/
 build-check-current/
 AdminAssets/
 tools/
-tests/
+/Tests/*
+
 # Local IDE/editor state
 .vs/
 .vscode/

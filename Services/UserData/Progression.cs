@@ -6,7 +6,8 @@ sealed partial class UserDataService
     public sealed record LiveSettlement(object?[] Result, object?[] Present);
 
     public async Task<object?[]?> RegisterLiveStartAsync(HttpContext context, object? payload, bool validateMusicUnlock = true,
-        bool buildUnit = false, bool ordinaryRewards = true)
+        bool buildUnit = false, bool ordinaryRewards = true, LiveRewardRules.Mode mode = LiveRewardRules.Mode.Ordinary,
+        object?[]? modeContext = null)
     {
         if (payload is not object?[] start || start.Length < 8 ||
             !long.TryParse(start[1]?.ToString(), out var chartId) || !PlayerProgressionRules.Charts.ContainsKey(chartId) ||
@@ -14,11 +15,23 @@ sealed partial class UserDataService
             || !int.TryParse(start[5]?.ToString(), out var requestedMagnification) || requestedMagnification is < 0 or > 10)
             throw new BadHttpRequestException(LiveProgressionErrors.InvalidStart);
         var userId = await GetCurrentUserIdAsync(context) ?? throw new BadHttpRequestException("ACCOUNT_UNAUTHORIZED", 401);
+        AuditionRules.Master? audition = null;
+        if (start[2] is not null && mode == LiveRewardRules.Mode.Ordinary && ordinaryRewards)
+        {
+            audition = ValidateAuditionStart(start, chartId);
+            mode = LiveRewardRules.Mode.Audition;
+            buildUnit = true;
+            validateMusicUnlock = false;
+        }
+        else if (start[2] is not null)
+            throw new BadHttpRequestException(AuditionErrors.InvalidStart);
         await EnsureDefaultUserDataAsync(userId);
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
         await LockLessonUserAsync(connection, transaction, userId);
-        var startHash = SHA256.HashData(MsgPack.Encode(new object?[] { payload, ordinaryRewards, buildUnit }));
+        if (mode == LiveRewardRules.Mode.Ghost)
+            modeContext = await ReadGhostStartAsync(connection, transaction, userId, start, chartId);
+        var startHash = SHA256.HashData(MsgPack.Encode(new object?[] { payload, ordinaryRewards, buildUnit, (int)mode, modeContext }));
         var pending = await ReadPendingLiveStartAsync(connection, transaction, userId, startHash);
         if (pending is not null) return pending.Unit;
         var missionParty = await ReadMissionPartyAsync(connection,userId,GetLong(start,0) ?? 0);
@@ -26,12 +39,17 @@ sealed partial class UserDataService
             context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogWarning(
                 "演出缺少可持久化角色编队 userId={UserId} partyId={PartyId} operation={Operation}",userId,GetLong(start,0),"character-mission-snapshot");
         if (validateMusicUnlock) await ValidateMusicDifficultyAsync(connection, userId, PlayerProgressionRules.Charts[chartId], auto);
-        var unit = buildUnit
-            ? await ReadLiveUnitAsync(connection, transaction, userId, GetLong(start, 0) ?? 0, chartId, auto)
-            : null;
+        object?[]? unit = null;
+        if (buildUnit)
+        {
+            var built = await ReadLiveUnitAsync(connection, transaction, userId, GetLong(start, 0) ?? 0, chartId, auto, audition?.SenseNotationId);
+            unit = built.Unit;
+            if (audition is not null) modeContext = new object?[] { 1, audition.Id, built.AuditionParty };
+        }
         if (!ordinaryRewards && unit is not null) unit[10] = auto ? 0d : 1d;
         var rank = await ReadRankStateAsync(connection, transaction, userId);
-        var snapshot = LiveRewardRules.Start(chartId, useStamina, requestedMagnification, rank.Stamina, unit, ordinaryRewards);
+        var settingId = mode == LiveRewardRules.Mode.Multi ? GetLong(start, 6) ?? 0 : 1;
+        var snapshot = LiveRewardRules.Start(chartId, useStamina, requestedMagnification, rank.Stamina, unit, ordinaryRewards, settingId);
         if (snapshot.StaminaCost > 0)
             await ExecuteAsync(connection, transaction,
                 """
@@ -44,12 +62,12 @@ sealed partial class UserDataService
                 userId, snapshot.StaminaCost);
         await using var command = new NpgsqlCommand(
             """
-            insert into user_live_sessions ("userId", live_master_id, is_auto, use_stamina, character_mission_party,start_snapshot,start_hash)
-            values ($1, $2, $3, $4, $5,$6,$7)
+            insert into user_live_sessions ("userId", live_master_id, is_auto, use_stamina, character_mission_party,start_snapshot,start_hash,live_mode,mode_context)
+            values ($1, $2, $3, $4, $5,$6,$7,$8,$9)
             on conflict ("userId") do update set live_master_id = excluded.live_master_id,
               is_auto = excluded.is_auto, use_stamina = excluded.use_stamina,
               completion = null, finish_hash = null, started_at = now(),character_mission_party=excluded.character_mission_party,
-              start_snapshot=excluded.start_snapshot,start_hash=excluded.start_hash
+              start_snapshot=excluded.start_snapshot,start_hash=excluded.start_hash,live_mode=excluded.live_mode,mode_context=excluded.mode_context
             """, connection, transaction);
         command.Parameters.AddWithValue(userId);
         command.Parameters.AddWithValue(chartId);
@@ -58,11 +76,14 @@ sealed partial class UserDataService
         command.Parameters.AddWithValue(MsgPack.Encode(missionParty));
         command.Parameters.AddWithValue(MsgPack.Encode(snapshot.ToWire()));
         command.Parameters.AddWithValue(startHash);
+        command.Parameters.AddWithValue((int)mode);
+        command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bytea,
+            Value = modeContext is null ? DBNull.Value : MsgPack.Encode(modeContext) });
         await command.ExecuteNonQueryAsync();
         await transaction.CommitAsync();
         context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
-            "演出开演 operation=live-start userId={UserId} chartId={ChartId} ordinary={Ordinary} requestedMagnification={RequestedMagnification} effectiveMagnification={EffectiveMagnification} staminaCost={StaminaCost} staminaBefore={StaminaBefore} staminaAfter={StaminaAfter} outcome=success",
-            userId, chartId, ordinaryRewards, requestedMagnification, snapshot.EffectiveMagnification, snapshot.StaminaCost,
+            "演出开演 operation=live-start userId={UserId} chartId={ChartId} mode={Mode} auditionId={AuditionId} ordinary={Ordinary} requestedMagnification={RequestedMagnification} effectiveMagnification={EffectiveMagnification} staminaCost={StaminaCost} staminaBefore={StaminaBefore} staminaAfter={StaminaAfter} outcome=success",
+            userId, chartId, mode, audition?.Id, ordinaryRewards, requestedMagnification, snapshot.EffectiveMagnification, snapshot.StaminaCost,
             snapshot.StaminaBefore, snapshot.StaminaBefore - snapshot.StaminaCost);
         if (unit is not null) context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
             "生成演出编队 operation=live-unit userId={UserId} partyId={PartyId} chartId={ChartId} totalStatus={TotalStatus} firstPlayOlivier={FirstPlayOlivier} outcome=success",
@@ -122,14 +143,14 @@ sealed partial class UserDataService
         var operations = await GameOperationsService.ReadAsync(connection, transaction, lockForUse: true);
         await LockLessonUserAsync(connection, transaction, userId);
         // 两种演出共用结束接口，按最近一次开始的会话分流，不能命中历史普通演出。
-        await using (var mode = new NpgsqlCommand(
+        await using (var lessonMode = new NpgsqlCommand(
             """
             select exists(select 1 from user_lesson_sessions l where l."userId"=$1
               and not exists(select 1 from user_live_sessions v where v."userId"=l."userId" and v.started_at>=l.started_at))
             """, connection, transaction))
         {
-            mode.Parameters.AddWithValue(userId);
-            if ((bool)(await mode.ExecuteScalarAsync())!)
+            lessonMode.Parameters.AddWithValue(userId);
+            if ((bool)(await lessonMode.ExecuteScalarAsync())!)
             {
                 var lesson = await FinishLessonCoreAsync(connection, transaction, userId, new object?[] { finish[0], finish[1], finish[2] });
                 await transaction.CommitAsync();
@@ -140,11 +161,13 @@ sealed partial class UserDataService
         }
         long chartId;
         bool auto, useStamina;
+        LiveRewardRules.Mode mode;
+        object?[]? modeContext;
         LiveRewardRules.Snapshot snapshot;
         object?[] missionParty;
         var hash = SHA256.HashData(MsgPack.Encode(payload));
         await using (var command = new NpgsqlCommand(
-            "select live_master_id, is_auto, use_stamina, completion, finish_hash,character_mission_party,start_snapshot from user_live_sessions where \"userId\" = $1 for update", connection, transaction))
+            "select live_master_id, is_auto, use_stamina, completion, finish_hash,character_mission_party,start_snapshot,live_mode,mode_context from user_live_sessions where \"userId\" = $1 for update", connection, transaction))
         {
             command.Parameters.AddWithValue(userId);
             await using var reader = await command.ExecuteReaderAsync();
@@ -163,6 +186,8 @@ sealed partial class UserDataService
                 return new((object?[])cached[0]!, replay.ToArray());
             }
             chartId = reader.GetInt64(0); auto = reader.GetBoolean(1); useStamina = reader.GetBoolean(2);
+            mode = (LiveRewardRules.Mode)reader.GetInt32(7);
+            modeContext = reader.IsDBNull(8) ? null : (object?[])MsgPack.Decode(reader.GetFieldValue<byte[]>(8))!;
             // 旧会话没有队伍快照，不能凭当前编队补写无法核实的历史角色进度。
             missionParty = reader.IsDBNull(5) ? Array.Empty<object?>() : (object?[])MsgPack.Decode(reader.GetFieldValue<byte[]>(5))!;
             // 更新前未完成的会话缺少实际扣除依据，要求重新开演；已完成会话仍可命中上面的幂等缓存。
@@ -171,12 +196,24 @@ sealed partial class UserDataService
         }
         var chart = PlayerProgressionRules.Charts[chartId];
         var baseScoreRecalculated = false;
+        var skillScoreRecalculated = false;
+        var recalculated = submitted;
         if (snapshot.Ordinary && !auto && snapshot.Unit is not null && submitted is { Length: 10 }
             && submitted[2] is null && LiveBaseScoreRules.CanRecalculate(snapshot.Unit, submitted))
         {
-            finish = LiveFinishValidation.Normalize(LiveBaseScoreRules.Recalculate(snapshot.Unit, submitted));
-            score = Convert.ToInt64(finish[0]);
+            recalculated = LiveBaseScoreRules.Recalculate(snapshot.Unit, submitted);
             baseScoreRecalculated = true;
+        }
+        if (mode is LiveRewardRules.Mode.Ordinary or LiveRewardRules.Mode.Audition && snapshot.Ordinary && !auto && snapshot.Unit is not null
+            && recalculated is not null && LiveSkillScoreRules.CanRecalculate(snapshot.Unit, recalculated))
+        {
+            recalculated = LiveSkillScoreRules.Recalculate(snapshot.Unit, recalculated);
+            skillScoreRecalculated = true;
+        }
+        if (baseScoreRecalculated || skillScoreRecalculated)
+        {
+            finish = LiveFinishValidation.Normalize(recalculated!);
+            score = Convert.ToInt64(finish[0]);
         }
         if (!auto) cleared = FinishLifeIsPositive(finish) && cleared;
         if (!auto) await RecordCharacterMissionLiveAsync(connection,transaction,userId,missionParty,finish,cleared);
@@ -247,7 +284,15 @@ sealed partial class UserDataService
         result[3] = new object?[] { state.Rank, next.Rank, state.Exp, next.Exp, gain, snapshot.Ordinary ? snapshot.StaminaBefore : state.Stamina };
         result[5] = lamp; result[6] = auto ? 0 : PlayerProgressionRules.Grade(achievement);
         result[8] = false; result[13] = (double)achievement; result[20] = beforeLamp;
-        var present = new List<object?> { DataObject(0, await ReadUserAsync(connection, userId)), DataObject(1, await ReadProfileAsync(connection, userId)), DataObject(128, await ReadCurrencyAsync(connection, userId)) };
+        if (mode == LiveRewardRules.Mode.Ghost)
+            result[28] = await FinishGhostAsync(connection, transaction, userId, modeContext
+                ?? throw new InvalidDataException("Ghost 演出缺少对手快照"), score);
+        var present = new List<object?>();
+        if (mode == LiveRewardRules.Mode.Audition)
+            await FinishAuditionAsync(connection, transaction, userId, modeContext
+                ?? throw new InvalidDataException("公演结算缺少模式快照"), snapshot, finish, score, auto, cleared, achievement, result, present);
+        present.AddRange(new object?[] { DataObject(0, await ReadUserAsync(connection, userId)),
+            DataObject(1, await ReadProfileAsync(connection, userId)), DataObject(128, await ReadCurrencyAsync(connection, userId)) });
         if (!auto)
         {
             foreach (var row in await ReadLivePlayResultsAsync(connection, userId))
@@ -265,11 +310,11 @@ sealed partial class UserDataService
             userId, MsgPack.Encode(new object?[] { settlement.Result, settlement.Present }), hash);
         await transaction.CommitAsync();
         context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
-            "Live settlement userId={UserId} chartId={ChartId} auto={Auto} cleared={Cleared} score={Score} achievement={Achievement} rank={Rank} exp={Exp} rating={Rating} stellaReleased={StellaReleased} olivierStatus={OlivierStatus} effectiveMagnification={EffectiveMagnification} coins={Coins} baseScoreRecalculated={BaseScoreRecalculated}",
-            userId, chartId, auto, cleared, score, achievement, next.Rank, next.Exp, rating,
+            "Live settlement userId={UserId} chartId={ChartId} mode={Mode} auditionId={AuditionId} auditionPhaseBefore={AuditionPhaseBefore} auditionPhaseAfter={AuditionPhaseAfter} auto={Auto} cleared={Cleared} score={Score} achievement={Achievement} rank={Rank} exp={Exp} rating={Rating} stellaReleased={StellaReleased} olivierStatus={OlivierStatus} effectiveMagnification={EffectiveMagnification} coins={Coins} baseScoreRecalculated={BaseScoreRecalculated} skillScoreRecalculated={SkillScoreRecalculated}",
+            userId, chartId, mode, result[14], result[9], result[10], auto, cleared, score, achievement, next.Rank, next.Exp, rating,
             musicStates.Single(row=>Convert.ToInt64(row[2])==chart.MusicMasterId)[5],
             musicStates.Single(row=>Convert.ToInt64(row[2])==chart.MusicMasterId)[8],
-            snapshot.EffectiveMagnification, coins, baseScoreRecalculated);
+            snapshot.EffectiveMagnification, coins, baseScoreRecalculated, skillScoreRecalculated);
         return settlement;
     }
 

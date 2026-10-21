@@ -2,9 +2,9 @@ using Npgsql;
 
 sealed partial class UserDataService
 {
-    const string PartyInvalid = "PARTY_INVALID_PAYLOAD";
-    const string PartyNotFound = "PARTY_NOT_FOUND";
-    const string PartyMemberInvalid = "PARTY_MEMBER_INVALID";
+    internal const string PartyInvalid = "PARTY_INVALID_PAYLOAD";
+    internal const string PartyNotFound = "PARTY_NOT_FOUND";
+    internal const string PartyMemberInvalid = "PARTY_MEMBER_INVALID";
 
     static void ResolvePartyCharacterAliases(long userId, IEnumerable<object?[]> slots, IEnumerable<object?[]> cards)
     {
@@ -32,6 +32,9 @@ sealed partial class UserDataService
         var posters = Objects(PosterDataObjectUnionKey).Select(item => Convert.ToInt64(item[0])).ToHashSet();
         var leader = GetNullableLong(values, 5);
         if (leader is < 1 or > 5) throw new BadHttpRequestException(PartyInvalid, 400);
+        var senseNotationId = GetNullableLong(values, 1);
+        if (senseNotationId is < 0 || senseNotationId is > 0 && !LiveUnitRules.HasSenseNotation(senseNotationId.Value))
+            throw new BadHttpRequestException(PartyInvalid, 400);
         var members = slots.Select(slot =>
         {
             if (slot is not object?[] { Length: 5 } member) throw new BadHttpRequestException(PartyInvalid, 400);
@@ -99,8 +102,12 @@ sealed partial class UserDataService
             changes.Add(DataObject(7,new object?[] { member.SlotId,partyId,old[2],member.Character,member.Poster,member.Accessory,member.Flags }));
         }
         // 现有 party_type 列承载客户端 Party.Key(3)，即队长位置，沿用原存档映射。
-        await using (var update = new NpgsqlCommand("update user_party_groups set party_type=$3,updated_at=now() where id=$1 and \"userId\"=$2",connection,transaction))
-        { update.Parameters.AddWithValue(partyId); update.Parameters.AddWithValue(userId); update.Parameters.AddWithValue((int)party[3]!); await update.ExecuteNonQueryAsync(); }
+        await using (var update = new NpgsqlCommand("update user_party_groups set party_type=$3,sense_notation_master_id=$4,updated_at=now() where id=$1 and \"userId\"=$2",connection,transaction))
+        {
+            update.Parameters.AddWithValue(partyId); update.Parameters.AddWithValue(userId); update.Parameters.AddWithValue((int)party[3]!);
+            update.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = (object?)senseNotationId ?? DBNull.Value });
+            await update.ExecuteNonQueryAsync();
+        }
         await transaction.CommitAsync();
         return changes.ToArray();
     }

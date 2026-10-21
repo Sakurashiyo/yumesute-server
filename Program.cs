@@ -1,4 +1,4 @@
-﻿DotEnv.Load(Path.Combine(AppContext.BaseDirectory, ".env"));
+DotEnv.Load(Path.Combine(AppContext.BaseDirectory, ".env"));
 DotEnv.Load(Path.Combine(Directory.GetCurrentDirectory(), "csharp-server", ".env"));
 DotEnv.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
 
@@ -49,9 +49,6 @@ app.UseRouting();
 app.UseRequestLogging(state.Logger);
 app.MapApiEndpoints(state);
 app.MapAssetEndpoints(state);
-app.MapAdminNotificationEndpoints(state);
-app.MapAdminSaveEndpoints(state);
-app.MapAdminOperationsEndpoints(state);
 app.MapRealtimeDebugEndpoints(state);
 app.MapGrpcService<RealtimeHubService>();
 

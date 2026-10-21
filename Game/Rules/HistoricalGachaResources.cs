@@ -5,7 +5,7 @@ static class HistoricalGachaResources
     public static readonly long[] Ids = Load();
     static long[] Load()
     {
-        using var stream = typeof(HistoricalGachaResources).Assembly.GetManifestResourceStream("AdminWeb.historical-gachas.json")
+        using var stream = typeof(HistoricalGachaResources).Assembly.GetManifestResourceStream("GameData.historical-gachas.json")
             ?? throw new InvalidOperationException("缺少已核验往期卡池目录");
         return JsonSerializer.Deserialize<long[]>(stream) ?? throw new InvalidDataException("往期卡池目录为空");
     }
@@ -32,5 +32,5 @@ static class HistoricalGachaResources
         return paths.All(path => File.Exists(Path.Combine(resourcesRoot,path)));
     }
     static readonly Lazy<Dictionary<long,object?[]>> Cards = new(() =>
-        GachaRules.ReadRows("AdminMaster.CharacterMaster.json").Cast<object?[]>().ToDictionary(row => GachaRules.Long(row[0])));
+        GachaRules.ReadRows("InventoryMaster.CharacterMaster.json").Cast<object?[]>().ToDictionary(row => GachaRules.Long(row[0])));
 }

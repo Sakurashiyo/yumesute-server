@@ -40,7 +40,7 @@ static class EpisodeProgressionRules
 
     static JsonElement[] Rows(string name)
     {
-        var group = name switch { "PosterMaster" => "Shop", "CharacterMaster" => "AdminMaster", _ => "Episode" };
+        var group = name switch { "PosterMaster" => "Shop", "CharacterMaster" => "InventoryMaster", _ => "Episode" };
         using var stream = typeof(EpisodeProgressionRules).Assembly.GetManifestResourceStream($"{group}.{name}.json")
             ?? throw new InvalidOperationException($"缺少剧情主数据：{name}");
         using var document = JsonDocument.Parse(stream);

@@ -198,6 +198,7 @@ static class DatabaseMigrator
         await CharacterMissionSchema.MigrateAsync(connection);
         await MigrateLiveSettlementAsync(connection);
         await AnotherNotationSchema.MigrateAsync(connection);
+        await AuditionSchema.MigrateAsync(connection);
         await AccountRecoverySchema.MigrateAsync(connection);
         await MusicUnlockSchema.MigrateAsync(connection);
         await MigrateCharacterSenseLevelsAsync(connection);
@@ -223,6 +224,14 @@ static class DatabaseMigrator
         await using var command = new NpgsqlCommand("""
             alter table user_live_sessions add column if not exists start_snapshot bytea;
             alter table user_live_sessions add column if not exists start_hash bytea;
+            alter table user_live_sessions add column if not exists live_mode integer not null default 0;
+            alter table user_live_sessions add column if not exists mode_context bytea;
+            create table if not exists user_ghost_lives (
+              "userId" bigint primary key references user_accounts(id) on delete cascade,
+              matching bytea not null,
+              rival_score bigint not null check (rival_score >= 0),
+              win_count bigint not null default 0 check (win_count >= 0)
+            );
             """, connection);
         await command.ExecuteNonQueryAsync();
     }
@@ -1084,10 +1093,12 @@ static class DatabaseMigrator
       display_index integer not null,
       name text not null,
       party_type integer not null default 1,
+      sense_notation_master_id bigint,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now(),
       unique("userId", display_index)
     );
+    alter table user_party_groups add column if not exists sense_notation_master_id bigint;
 
     create table if not exists user_party_slots (
       id bigint primary key,

@@ -2,7 +2,7 @@ static class HomeDisplayPreferenceRules
 {
     public const string Invalid = "HOME_DISPLAY_PREFERENCE_INVALID";
 
-    public static long Costume(AdminSaveCatalog catalog, long characterBaseId, long? costumeId)
+    public static long Costume(GameInventoryCatalog catalog, long characterBaseId, long? costumeId)
     {
         if (!catalog.Bases.TryGetValue(characterBaseId, out var character))
             throw new BadHttpRequestException(Invalid, StatusCodes.Status400BadRequest);

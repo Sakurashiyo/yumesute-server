@@ -10,10 +10,16 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>LiveSettlementChecks</_Parameter1>
     </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>MultiplayerChecks</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
+    <EmbeddedResource Include="masterdata-export/tables/AuditionMaster.json" LogicalName="Competition.AuditionMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/AuditionPhaseMaster.json" LogicalName="Competition.AuditionPhaseMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/AuditionRewardPackageMaster.json" LogicalName="Competition.AuditionRewardPackageMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/StampMaster.json" LogicalName="Realtime.StampMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/NgWordMaster.json" LogicalName="Realtime.NgWordMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterAwakeningItemGroupMaster.json" LogicalName="Progression.CharacterAwakeningItemGroupMaster.json" />
@@ -47,6 +53,7 @@
     <EmbeddedResource Include="masterdata-export/tables/PlayerRankMaster.json" LogicalName="Progression.PlayerRankMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/MusicMaster.json" LogicalName="Progression.MusicMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/LiveMaster.json" LogicalName="Progression.LiveMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/GhostLiveMaster.json" LogicalName="Live.GhostLiveMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/AnotherNotationMaster.json" LogicalName="Progression.AnotherNotationMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterExperienceItemMaster.json" LogicalName="Progression.CharacterExperienceItemMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterLevelMaster.json" LogicalName="Progression.CharacterLevelMaster.json" />
@@ -55,23 +62,21 @@
     <EmbeddedResource Include="masterdata-export/tables/CharacterKeyMissionMaster.json" LogicalName="CharacterMission.CharacterKeyMissionMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterStarRankMaster.json" LogicalName="CharacterMission.CharacterStarRankMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/CharacterSenseEnhanceItemGroupMaster.json" LogicalName="Progression.CharacterSenseEnhanceItemGroupMaster.json" />
-    <EmbeddedResource Include="masterdata-export/tables/CharacterMaster.json" LogicalName="AdminMaster.CharacterMaster.json" />
-    <EmbeddedResource Include="masterdata-export/tables/CharacterBaseMaster.json" LogicalName="AdminMaster.CharacterBaseMaster.json" />
-    <EmbeddedResource Include="masterdata-export/tables/CostumeMaster.json" LogicalName="AdminMaster.CostumeMaster.json" />
-    <EmbeddedResource Include="masterdata-export/tables/CostumeGroupMaster.json" LogicalName="AdminMaster.CostumeGroupMaster.json" />
-    <EmbeddedResource Include="masterdata-export/tables/CostumeWearableCharacterGroupMaster.json" LogicalName="AdminMaster.CostumeWearableCharacterGroupMaster.json" />
-    <EmbeddedResource Include="masterdata-export/tables/ItemMaster.json" LogicalName="AdminMaster.ItemMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterMaster.json" LogicalName="InventoryMaster.CharacterMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CharacterBaseMaster.json" LogicalName="InventoryMaster.CharacterBaseMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CostumeMaster.json" LogicalName="InventoryMaster.CostumeMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CostumeGroupMaster.json" LogicalName="InventoryMaster.CostumeGroupMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/CostumeWearableCharacterGroupMaster.json" LogicalName="InventoryMaster.CostumeWearableCharacterGroupMaster.json" />
+    <EmbeddedResource Include="masterdata-export/tables/ItemMaster.json" LogicalName="InventoryMaster.ItemMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/MissionMaster.json" LogicalName="Mission.MissionMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/MissionPassMaster.json" LogicalName="Mission.MissionPassMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/MissionPassDetailMaster.json" LogicalName="Mission.MissionPassDetailMaster.json" />
     <EmbeddedResource Include="masterdata-export/tables/MissionPassLoopRewardMaster.json" LogicalName="Mission.MissionPassLoopRewardMaster.json" />
-    <EmbeddedResource Include="AdminWeb/*" LogicalName="AdminWeb.%(Filename)%(Extension)" />
-    <Content Include="../admin-icons/**/*.png" Link="AdminIcons/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="AdminAssets/**/*.png" Link="AdminIcons/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Game/Data/*.json" LogicalName="GameData.%(Filename)%(Extension)" />
     <EmbeddedResource Include="masterdata-export/tables/GachaMaster.json" LogicalName="Gacha.GachaMaster.json" />
 
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="masterdata-export/tables/SenseMaster.json;masterdata-export/tables/StarActMaster.json;masterdata-export/tables/StarActConditionMaster.json;masterdata-export/tables/LeaderSenseMaster.json;masterdata-export/tables/EffectTriggerCharacterBaseGroupMaster.json;masterdata-export/tables/LiveSettingMaster.json;masterdata-export/tables/LiveDropFrameGroupMaster.json" LogicalName="Live.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="masterdata-export/tables/SenseMaster.json;masterdata-export/tables/SenseNotationMaster.json;masterdata-export/tables/StarActMaster.json;masterdata-export/tables/StarActConditionMaster.json;masterdata-export/tables/LeaderSenseMaster.json;masterdata-export/tables/EffectTriggerCharacterBaseGroupMaster.json;masterdata-export/tables/LiveSettingMaster.json;masterdata-export/tables/LiveDropFrameGroupMaster.json" LogicalName="Live.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

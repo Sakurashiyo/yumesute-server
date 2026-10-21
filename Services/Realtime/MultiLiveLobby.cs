@@ -8,7 +8,9 @@ sealed partial class MultiLiveRealtimeService
     readonly Dictionary<string, DateTimeOffset> disconnectedAt = new(StringComparer.Ordinal);
     static readonly Dictionary<int, string> LobbyMethods = new[] { "CreatePrivateHallAsync", "JoinPublicHallAsync",
         "JoinPrivateHallWithKeyCodeAsync", "JoinPrivateHallFromInviteAsync", "FetchUsersAsync",
-        "ReadyForDecideMember", "SelectMusicAsync", "SelectDifficultyAsync", "SelectStampAsync" }
+        "ReadyForDecideMember", "SelectMusicAsync", "SelectDifficultyAsync", "SelectStampAsync",
+        "OpenPrivateRoomAsync", "DecideMemberAsync", "ReadyGameAsync", "BeforeGameCalculateAsync",
+        "StartGameAsync", "SyncInGameStatusAsync", "ExitGameAsync", "EntryFinalResultAsync", "ContinuePlayAsync" }
         .ToDictionary(RealtimeHubProtocol.MethodId);
 
     internal sealed class LobbyConnection(string identity)
@@ -48,6 +50,8 @@ sealed partial class MultiLiveRealtimeService
             {
                 connections.Remove(session.Identity);
                 disconnectedAt[session.Identity] = DateTimeOffset.UtcNow;
+                if (GetRoomForUser(session.Identity) is { Status: >= MultiLiveHallStatus.StandbyGame })
+                    LeaveRoom(session.Identity);
             }
             session.Outgoing.Writer.TryComplete();
         }
@@ -82,6 +86,7 @@ sealed partial class MultiLiveRealtimeService
         {
             if (room.HostMemberId == member.MemberId) room.HostMemberId = room.Users.Keys.Min();
             Broadcast(room, "OnLeaveAnyOne", member.MemberId);
+            AdvanceGame(room);
         }
     }
 
@@ -160,6 +165,7 @@ sealed partial class MultiLiveRealtimeService
         }
         var current = GetRoomForUser(identity) ?? throw new RpcException(new Status(StatusCode.FailedPrecondition, RealtimeHubProtocol.NotJoined));
         var user = current.Users.Values.Single(u => u.HashUserId == identity);
+        if (HandleGame(current, user, method, args, out var gameResult)) return gameResult;
         if (method == "FetchUsersAsync")
         {
             if (args is not null) throw MultiLiveWire.Invalid();
@@ -167,21 +173,27 @@ sealed partial class MultiLiveRealtimeService
         }
         if (method == "ReadyForDecideMember")
         {
+            RequireState(current.Status == MultiLiveHallStatus.Recruiting);
             user.IsReadyDecideMember = MultiLiveWire.Boolean(args);
             Broadcast(current, "OnReadyDecideMember", new object?[] { user.MemberId, user.IsReadyDecideMember });
         }
         else if (method == "SelectMusicAsync")
         {
             var a = MultiLiveWire.Args(args, 3);
+            RequireState(current.Status == MultiLiveHallStatus.StandbyGame && current.MusicMasterId == 0);
             var music = MultiLiveWire.Number(a[0]); var random = MultiLiveWire.Boolean(a[1]); var afk = MultiLiveWire.Boolean(a[2]);
             if (!random && !PlayerProgressionRules.Charts.Values.Any(c => c.MusicMasterId == music)) throw MultiLiveWire.Invalid();
             SelectMusicAsync(identity, music, random, afk).GetAwaiter().GetResult();
             Broadcast(current, "OnSelectMusic", new object?[] { user.MemberId, music, random });
+            AdvanceGame(current);
         }
         else if (method == "SelectDifficultyAsync")
         {
             var a = MultiLiveWire.Args(args, 2);
+            RequireState(current.Status == MultiLiveHallStatus.StandbyGame && current.MusicMasterId > 0);
             var difficulty = (MusicDifficulties)MultiLiveWire.Number(a[0], 1, 5); var afk = MultiLiveWire.Boolean(a[1]);
+            if (!PlayerProgressionRules.Charts.Values.Any(c => c.MusicMasterId == current.MusicMasterId && c.Difficulty == (int)difficulty))
+                throw MultiLiveWire.Invalid();
             SelectDifficultyAsync(identity, difficulty, afk).GetAwaiter().GetResult();
             Broadcast(current, "OnSelectDifficulty", new object?[] { user.MemberId, (int)difficulty });
         }

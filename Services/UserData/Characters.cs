@@ -2,7 +2,45 @@ using Npgsql;
 
 sealed partial class UserDataService
 {
-    static readonly Lazy<AdminSaveCatalog> CharacterCatalog = new(() => new AdminSaveCatalog());
+    static readonly Lazy<GameInventoryCatalog> CharacterCatalog = new(() => new GameInventoryCatalog());
+
+    public async Task<object?[]> SetCharacterFavoriteAsync(HttpContext context, object? payload)
+    {
+        var userId = await RequireAuthenticatedUserAsync(context);
+        if (payload is not object?[] { Length: 2 } values
+            || values[0] is not (byte or sbyte or short or ushort or int or uint or long)
+            || GetLong(values, 0) is not long characterId || characterId <= 0
+            || values[1] is not bool favorite)
+        {
+            throw new BadHttpRequestException(CharacterFavoriteErrors.InvalidRequest);
+        }
+
+        await EnsureDefaultUserDataAsync(userId);
+        await using var connection = await database.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            update user_character_cards
+            set is_favorite = $3
+            where id = $1 and "userId" = $2
+            returning id, character_master_id, level, exp, awakening, character_base_id,
+                      skill_level, extra_1, extra_2, is_new, display_awakening_status, is_favorite
+            """, connection);
+        command.Parameters.AddWithValue(characterId);
+        command.Parameters.AddWithValue(userId);
+        command.Parameters.AddWithValue(favorite);
+        object?[] character;
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            if (!await reader.ReadAsync())
+                throw new BadHttpRequestException(CharacterFavoriteErrors.CharacterMissing, StatusCodes.Status404NotFound);
+            character = ReadUpdatedCharacter(reader);
+        }
+
+        context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
+            "角色收藏更新 operation=character-favorite userId={UserId} characterId={CharacterId} favorite={Favorite} outcome=success",
+            userId, characterId, favorite);
+        return new object?[] { DataObject(4, character) };
+    }
 
     public async Task<object?[]> SetCostumeAsync(HttpContext context, long characterBaseMasterId, long costumeMasterId)
     {
@@ -186,7 +224,7 @@ sealed partial class UserDataService
                 exp = $4
             where id = $1 and "userId" = $2
             returning id, character_master_id, level, exp, awakening, character_base_id,
-                      skill_level, extra_1, extra_2, is_new, display_awakening_status
+                      skill_level, extra_1, extra_2, is_new, display_awakening_status, is_favorite
             """, connection, transaction);
         command.Parameters.AddWithValue(characterId);
         command.Parameters.AddWithValue(userId);
@@ -201,7 +239,7 @@ sealed partial class UserDataService
         {
             reader.GetInt64(0), reader.GetInt64(1), reader.GetInt32(2), reader.GetInt32(3), 0,
             reader.GetInt32(4), reader.GetInt64(5), reader.GetInt32(6), reader.GetInt32(7), reader.GetInt32(8),
-            reader.GetBoolean(10), null, 0, 1, reader.GetBoolean(9)
+            reader.GetBoolean(10), null, 0, 1, reader.GetBoolean(11)
         };
     readonly record struct ExperienceItemRequest(long ItemMasterId, int Quantity, int QuantityRemaining);
     readonly record struct CharacterExperienceState(int Level, int Experience, long MasterId);

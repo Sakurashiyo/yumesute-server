@@ -2,6 +2,32 @@ static partial class ApiEndpointMappings
 {
     static void MapGameplayEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
+        app.Use(async (context, next) =>
+        {
+            try { await next(); }
+            catch (BadHttpRequestException error) when (!context.Response.HasStarted
+                && context.Request.Path.StartsWithSegments("/localap/api/Lives")
+                && error.Message is LiveProgressionErrors.InvalidStart or LiveProgressionErrors.InvalidFinish
+                    or LiveProgressionErrors.InvalidJudges or LiveProgressionErrors.SessionMissing
+                    or LiveProgressionErrors.SessionConflict or LiveProgressionErrors.GhostUnavailable)
+            {
+                await logger.LogAsync($"level=WARN operation=live path={context.Request.Path} requestId={context.TraceIdentifier} errorCode={error.Message} outcome=failed");
+                await codec.WriteApiErrorAsync(context, error.Message, error.StatusCode);
+            }
+            catch (BadHttpRequestException error) when (!context.Response.HasStarted
+                && error.Message is CharacterFavoriteErrors.InvalidRequest or CharacterFavoriteErrors.CharacterMissing)
+            {
+                await logger.LogAsync($"level=WARN operation=character-favorite path={context.Request.Path} requestId={context.TraceIdentifier} errorCode={error.Message} outcome=failed");
+                await codec.WriteApiErrorAsync(context, error.Message, error.StatusCode);
+            }
+            catch (BadHttpRequestException error) when (!context.Response.HasStarted
+                && context.Request.Path.StartsWithSegments("/localap/api/Parties")
+                && error.Message is UserDataService.PartyInvalid or UserDataService.PartyNotFound or UserDataService.PartyMemberInvalid)
+            {
+                await logger.LogAsync($"level=WARN operation=party path={context.Request.Path} requestId={context.TraceIdentifier} errorCode={error.Message} outcome=failed");
+                await codec.WriteApiErrorAsync(context, error.Message, error.StatusCode);
+            }
+        });
         MapLessonEndpoints(app, state, codec, logger);
         app.MapMethods("/localap/api/Lives/UpdateClearLamps/{multiLiveId:long}", new[] { "GET", "POST" }, async (HttpContext context, long multiLiveId) =>
         {
@@ -20,17 +46,15 @@ static partial class ApiEndpointMappings
         app.MapGet("/localap/api/Lives/GetMultiLiveInformation/{multiLiveId:long}", async (HttpContext context, long multiLiveId) =>
         {
             await logger.LogAsync($"lives-get-multi-live-information multiLiveId={multiLiveId} query={context.Request.QueryString}");
-            var realtimeInformation = state.MultiLiveRealtime.GetMultiLiveInformation(multiLiveId);
-            var result = realtimeInformation.Length == 0
-                ? GameResults.MultiLiveInformation(multiLiveId)
-                : realtimeInformation;
+            var identity = await state.UserDataService.GetLiveIdentityAsync(context);
+            var result = state.MultiLiveRealtime.ReadLiveInformation(identity, multiLiveId);
             await codec.WriteApiFramesAsync(
                 context,
                 result,
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
-                GameResults.IsCompressedMultiLiveInformation(multiLiveId) ? "result-lz4-five-frame" : "five-frame");
+                "result-lz4-five-frame");
         });
 
         app.MapPost("/localap/api/Lives/MatchingGhostLive", async context =>
@@ -39,7 +63,7 @@ static partial class ApiEndpointMappings
             await logger.LogAsync($"lives-matching-ghost-live payload={ValueFormatter.Format(body)}");
             await codec.WriteApiFramesAsync(
                 context,
-                GameResults.MatchingGhostLiveResult(),
+                await state.UserDataService.MatchGhostLiveAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
@@ -64,7 +88,8 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-ghost-live payload={ValueFormatter.Format(body)}");
-            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, validateMusicUnlock:false, buildUnit: true, ordinaryRewards:false);
+            var unit = await state.UserDataService.RegisterLiveStartAsync(context, body, buildUnit: true,
+                mode: LiveRewardRules.Mode.Ghost);
             await codec.WriteApiFramesAsync(
                 context,
                 unit,
@@ -78,11 +103,12 @@ static partial class ApiEndpointMappings
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-multi-live payload={ValueFormatter.Format(body)}");
-            if (body is object?[] multi && multi.Length >= 3)
-                await state.UserDataService.RegisterLiveStartAsync(context, new object?[] { null, multi[0], null, null, multi[2], 1, null, false }, validateMusicUnlock:false, ordinaryRewards:false);
+            if (body is not object?[] multi || multi.Length != 5)
+                throw new BadHttpRequestException(LiveProgressionErrors.InvalidStart);
+            var unit = await state.UserDataService.StartMultiLiveAsync(context, multi, state.MultiLiveRealtime);
             await codec.WriteApiFramesAsync(
                 context,
-                GameResults.MultiLiveStartResult(body),
+                unit,
                 await state.UserDataService.GetMusicPresentDataAsync(context),
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
@@ -213,6 +239,14 @@ static partial class ApiEndpointMappings
             await logger.LogAsync($"character-bases-set-costume characterBaseMasterId={characterBaseMasterId} costumeMasterId={costumeMasterId}");
             var present = await state.UserDataService.SetCostumeAsync(context, characterBaseMasterId, costumeMasterId);
             await codec.WriteApiFramesAsync(context, new object?[] { true }, present, Array.Empty<object?>(), Array.Empty<object?>());
+        });
+
+        app.MapPost("/localap/api/Characters/SetFavorite", async (HttpContext context) =>
+        {
+            var body = await codec.ReadRequestBodyAsync(context);
+            var present = await state.UserDataService.SetCharacterFavoriteAsync(context, body);
+            await codec.WriteApiFramesAsync(context, new object?[] { true }, present,
+                Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapPost("/localap/api/Characters/SetPortalMCharacter", async (HttpContext context) =>
@@ -387,6 +421,20 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(),
                 Array.Empty<object?>(),
                 Array.Empty<object?>());
+        });
+
+        app.MapPost("/localap/api/Parties/{srcOrder:int}/CopyTo/{destOrder:int}", async (HttpContext context, int srcOrder, int destOrder) =>
+        {
+            // 客户端同时在路径和查询中传顺序；重复参数必须一致，避免复制错队。
+            foreach (var (key, expected) in new[] { ("srcOrder", srcOrder), ("destOrder", destOrder) })
+            {
+                if (context.Request.Query.TryGetValue(key, out var values)
+                    && (values.Count != 1 || !int.TryParse(values[0], out var actual) || actual != expected))
+                    throw new BadHttpRequestException(UserDataService.PartyInvalid, 400);
+            }
+            var present = await state.UserDataService.CopyPartyAsync(context, srcOrder, destOrder);
+            await codec.WriteApiFramesAsync(context, new object?[] { true }, present,
+                Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapPost("/localap/api/Parties/{partyId:long}/EditParty", async (HttpContext context, long partyId) =>

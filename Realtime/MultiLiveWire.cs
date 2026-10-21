@@ -3,7 +3,7 @@ using SiriusLocalServer.Realtime;
 
 static class MultiLiveWire
 {
-    static readonly Lazy<AdminSaveCatalog> Catalog = new(() => new());
+    static readonly Lazy<GameInventoryCatalog> Catalog = new(() => new());
     public static object?[] Character(MultiLiveCharacter c) => new object?[] { c.MCharacterId, c.TalentStage,
         c.MNameColorId, c.MNamePlateId, c.MTrophyId1, c.MTrophyId2, c.MTrophyId3,
         c.DisplayAwakeningStatus, c.MNameplateDetailId, c.TotalStatus, c.MNameBaseColorid };

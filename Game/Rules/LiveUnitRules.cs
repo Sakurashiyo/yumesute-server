@@ -4,24 +4,26 @@ using System.Globalization;
 static partial class LiveUnitRules
 {
     public sealed record Member(int Slot, object?[] Card, object?[] Status);
-    static readonly Dictionary<long, object?[]> Cards = Table("AdminMaster.CharacterMaster.json");
+    static readonly Dictionary<long, object?[]> Cards = Table("InventoryMaster.CharacterMaster.json");
     static readonly Dictionary<long, object?[]> Senses = Table("Live.SenseMaster.json");
     static readonly Dictionary<long, object?[]> StarActs = Table("Live.StarActMaster.json");
     static readonly Dictionary<long, object?[]> Conditions = Table("Live.StarActConditionMaster.json");
     static readonly Dictionary<long, object?[]> Leaders = Table("Live.LeaderSenseMaster.json");
     static readonly Dictionary<long, object?[]> Effects = Table("Status.EffectMaster.json");
     static readonly Dictionary<long, object?[]> Music = Table("Progression.MusicMaster.json");
-    static readonly Dictionary<long, object?[]> Bases = Table("AdminMaster.CharacterBaseMaster.json");
+    static readonly Dictionary<long, object?[]> Bases = Table("InventoryMaster.CharacterBaseMaster.json");
     static readonly Dictionary<long, object?[]> Groups = Table("Live.EffectTriggerCharacterBaseGroupMaster.json");
     static readonly Dictionary<long, object?[]> Blooms = Table("Status.CharacterBloomBonusGroupMaster.json");
+    static readonly Dictionary<long, object?[]> SenseNotations = Table("Live.SenseNotationMaster.json");
 
     static Dictionary<long, object?[]> Table(string name) =>
         GachaRules.ReadRows(name).Cast<object?[]>().ToDictionary(row => N(row[0]));
     internal static int I(object? value) => Convert.ToInt32(value, CultureInfo.InvariantCulture);
     internal static long N(object? value) => Convert.ToInt64(value, CultureInfo.InvariantCulture);
     internal static object?[][] Rows(object? value) => ((object?[])value!).Cast<object?[]>().ToArray();
+    internal static bool HasSenseNotation(long id) => SenseNotations.ContainsKey(id);
 
-    public static object?[] Build(Member[] members, int leaderSlot, long chartId, bool auto)
+    public static object?[] Build(Member[] members, int leaderSlot, long chartId, bool auto, long? senseNotationId = null)
     {
         if (members.Length is < 1 or > 5 || members.Any(m => m.Slot is < 1 or > 5)
             || members.Select(m => m.Slot).Distinct().Count() != members.Length
@@ -82,8 +84,15 @@ static partial class LiveUnitRules
             var index = I(effect[1]) - 41;
             requiredLights[index] = Math.Max(0, requiredLights[index] - (int)EffectValue(effect, 1));
         }
+        object?[][]? notation = null;
+        if (senseNotationId is > 0)
+        {
+            if (!SenseNotations.TryGetValue(senseNotationId.Value, out var notationMaster))
+                throw new BadHttpRequestException(LiveProgressionErrors.InvalidStart);
+            notation = Rows(notationMaster[1]);
+        }
         var timing = LiveTimingRules.Calculate(I(Music[PlayerProgressionRules.Charts[chartId].MusicMasterId][14]),
-            senses, requiredLights);
+            senses, requiredLights, notation);
         var starAct = new object?[]
         {
             checked(I(star[5]) + I(leader.Card[4]) * I(star[6])), leader.Card[0], RuntimeCondition(I(star[9])),

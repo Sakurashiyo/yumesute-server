@@ -24,7 +24,13 @@ sealed partial class UserDataService
         {
             var setting = operations.Configuration.LoginBonuses[source.Id];
             if (!setting.IsOpen(now)) continue;
-            var reward = source with { StartAt = setting.StartsAt, EndAt = setting.EndsAt ?? MissionPassRules.PermanentEnd };
+            var reward = source with
+            {
+                StartAt = setting.StartsAt, EndAt = setting.EndsAt ?? MissionPassRules.PermanentEnd,
+                ThingType = setting.ThingType ?? source.ThingType, MasterId = setting.MasterId ?? source.MasterId,
+                Quantity = setting.Quantity ?? source.Quantity, Days = setting.Days ?? source.Days,
+                IsLoop = setting.IsLoop ?? source.IsLoop
+            };
             var count = 0;
             await using (var history = new NpgsqlCommand("""
                 select count(*)::integer from user_login_bonus_claims where "userId"=$1 and login_bonus_id=$2
@@ -120,7 +126,7 @@ sealed partial class UserDataService
                     and id = any($2)
                     and received_at is null
                     and (expires_at is null or expires_at > now())
-                  order by id
+                  order by id for update
                   """
                 : """
                   select id, payload::text, created_at, expires_at
@@ -128,7 +134,7 @@ sealed partial class UserDataService
                   where "userId" = $1
                     and received_at is null
                     and (expires_at is null or expires_at > now())
-                  order by id
+                  order by id for update
                   """,
             connection,
             transaction))

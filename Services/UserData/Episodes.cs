@@ -230,7 +230,7 @@ sealed partial class UserDataService
         await using var command = new NpgsqlCommand(
             """
             select id, character_master_id, level, exp, awakening, character_base_id,
-                   skill_level, extra_1, extra_2, is_new, display_awakening_status
+                   skill_level, extra_1, extra_2, is_new, display_awakening_status, is_favorite
             from user_character_cards
             where "userId" = $1
               and character_master_id = $2

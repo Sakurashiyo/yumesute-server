@@ -669,6 +669,7 @@ sealed partial class UserDataService
         result.AddRange(itemPossessions.Select(value => DataObject(27, value)));
         result.AddRange(livePlayResults.Select(value => DataObject(24, value)));
         result.AddRange(anotherNotationResults.Select(value => DataObject(AnotherNotationUnionKey, value)));
+        result.AddRange((await ReadAuditionClearsAsync(connection, userId)).Select(value => DataObject(90, value)));
         result.AddRange(liveMusicStates.Select(value => DataObject(25, value)));
         result.Add(DataObject(130,await ReadLiveAchievementAsync(connection,userId)));
         result.AddRange(dugongRunStates.Select(value => DataObject(177, value)));
@@ -1307,7 +1308,7 @@ sealed partial class UserDataService
         await using var command = new NpgsqlCommand(
             """
             select id, character_master_id, level, exp, awakening, character_base_id,
-                   skill_level, extra_1, extra_2, is_new, display_awakening_status
+                   skill_level, extra_1, extra_2, is_new, display_awakening_status, is_favorite
             from user_character_cards
             where "userId" = $1
             order by id

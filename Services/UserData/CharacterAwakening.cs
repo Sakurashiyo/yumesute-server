@@ -37,7 +37,7 @@ sealed partial class UserDataService
                 display_awakening_status = $3 and (awakening=0 or display_awakening_status)
             where id=$1 and "userId"=$2
             returning id, character_master_id, level, exp, awakening, character_base_id,
-                      skill_level, extra_1, extra_2, is_new, display_awakening_status
+                      skill_level, extra_1, extra_2, is_new, display_awakening_status, is_favorite
             """, connection, transaction))
         {
             update.Parameters.AddWithValue(characterId);
@@ -62,7 +62,7 @@ sealed partial class UserDataService
             update user_character_cards set display_awakening_status = not display_awakening_status
             where id=$1 and "userId"=$2 and awakening > 0 and character_master_id=any($3)
             returning id, character_master_id, level, exp, awakening, character_base_id,
-                      skill_level, extra_1, extra_2, is_new, display_awakening_status
+                      skill_level, extra_1, extra_2, is_new, display_awakening_status, is_favorite
             """, connection);
         command.Parameters.AddWithValue(characterId);
         command.Parameters.AddWithValue(userId);

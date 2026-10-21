@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-sealed class AdminSaveCatalog
+sealed class GameInventoryCatalog
 {
     public sealed record Entry(long Id, string Name, long BaseId = 0, int Rarity = 0, int MaxQuantity = 0, string ImageKey = "");
     public sealed record BaseInfo(long Id, string Name, long DefaultCostume);
@@ -14,7 +14,7 @@ sealed class AdminSaveCatalog
         CostumeWearableBaseIds.TryGetValue(costumeId, out var bases)
         && bases.Contains(characterBaseMasterId);
 
-    public AdminSaveCatalog()
+    public GameInventoryCatalog()
     {
         Bases = Read("CharacterBaseMaster").ToDictionary(row => row[0].GetInt64(),
             row => new BaseInfo(row[0].GetInt64(), row[1].GetString()!, row[24].GetInt64()));
@@ -48,8 +48,8 @@ sealed class AdminSaveCatalog
 
     static JsonElement[] Read(string table)
     {
-        using var stream = typeof(AdminSaveCatalog).Assembly.GetManifestResourceStream($"AdminMaster.{table}.json")
-            ?? throw new InvalidOperationException($"缺少存档管理主数据：{table}");
+        using var stream = typeof(GameInventoryCatalog).Assembly.GetManifestResourceStream($"InventoryMaster.{table}.json")
+            ?? throw new InvalidOperationException($"缺少角色物品主数据：{table}");
         using var document = JsonDocument.Parse(stream);
         return document.RootElement.EnumerateArray().Select(row => row.Clone()).ToArray();
     }

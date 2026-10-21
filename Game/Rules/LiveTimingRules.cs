@@ -1,20 +1,22 @@
 // 技能时轴使用歌曲时长、实际槽位、CT 和队长光需求，不能沿用示例队伍的触发结果。
 static class LiveTimingRules
 {
-    public static Dictionary<int, object?> Calculate(int duration, object?[][] senses, int[] required)
+    public static Dictionary<int, object?> Calculate(int duration, object?[][] senses, int[] required, object?[][]? notation = null)
     {
-        var positions = new[] { 1, 2, 3, 4, 5, 3, 2, 1 };
-        var step = duration / (positions.Length + 1);
-        if (step <= 0 || required.Length != 5 || required.Any(count => count < 0))
+        if (duration <= 0 || required.Length != 5 || required.Any(count => count < 0))
             throw new InvalidOperationException("歌曲长度或 Star Act 光需求无效");
         var byPosition = senses.ToDictionary(sense => LiveUnitRules.I(sense[0]));
+        var events = notation is null
+            ? UniformEvents(duration)
+            : notation.Select(row => (Slot: LiveUnitRules.I(row[1]), Second: LiveUnitRules.I(row[2])))
+                .OrderBy(item => item.Second).ToArray();
+        if (events.Any(item => item.Slot is < 1 or > 5 || item.Second <= 0 || item.Second > duration))
+            throw new InvalidOperationException("指定技能谱面事件无效");
         var last = new Dictionary<int, int>();
         var lights = new List<int>();
         var timings = new Dictionary<int, object?>();
-        for (var index = 0; index < positions.Length; index++)
+        foreach (var (position, second) in events)
         {
-            var position = positions[index];
-            var second = step * (index + 1);
             if (!byPosition.TryGetValue(position, out var sense)) continue;
             var acquired = ((object?[])sense[5]!).Select(LiveUnitRules.I).ToArray();
             if (last.TryGetValue(position, out var previous) && second - previous < LiveUnitRules.I(sense[3]))
@@ -52,5 +54,13 @@ static class LiveTimingRules
             });
         }
         return timings;
+    }
+
+    static (int Slot, int Second)[] UniformEvents(int duration)
+    {
+        var positions = new[] { 1, 2, 3, 4, 5, 3, 2, 1 };
+        var step = duration / (positions.Length + 1);
+        if (step <= 0) throw new InvalidOperationException("歌曲长度无效");
+        return positions.Select((slot, index) => (slot, step * (index + 1))).ToArray();
     }
 }

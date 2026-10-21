@@ -2,6 +2,8 @@ static partial class ApiEndpointMappings
 {
     static void MapCompetitionEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
+        MapAuditionEndpoints(app, state, codec, logger);
+
         app.MapGet("/localap/api/Leagues", async context =>
         {
             await logger.LogAsync("leagues-list");

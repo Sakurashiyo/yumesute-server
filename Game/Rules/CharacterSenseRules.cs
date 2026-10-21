@@ -21,7 +21,7 @@ static class CharacterSenseRules
 
     static Dictionary<long, int> ReadCharacters()
     {
-        using var document = Read("AdminMaster.CharacterMaster.json");
+        using var document = Read("InventoryMaster.CharacterMaster.json");
         return document.RootElement.EnumerateArray().ToDictionary(row => row[0].GetInt64(), row => row[14].GetInt32());
     }
 

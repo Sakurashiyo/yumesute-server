@@ -1,31 +1,41 @@
-// 普通演出的消耗、数量和奖励框规则；特殊演出不复用这套单人倍率。
+// 已核实的基础消耗和奖励规则；协力专属加成暂不叠加。
 static class LiveRewardRules
 {
+    public enum Mode
+    {
+        Ordinary = 0,
+        Ghost = 1,
+        Multi = 2,
+        Audition = 3
+    }
+
     static readonly int[] RewardMagnifications = [1, 5, 10, 14, 18, 21, 24, 26, 28, 29, 30];
     static readonly Dictionary<long, int> MusicStamina = GachaRules.ReadRows("Progression.MusicMaster.json")
         .Cast<object?[]>().ToDictionary(row => Convert.ToInt64(row[0]), row => Convert.ToInt32(row[13]));
-    static readonly long NormalGroup = GachaRules.ReadRows("Live.LiveSettingMaster.json").Cast<object?[]>()
-        .Where(row => Convert.ToInt32(row[2]) == 1).Select(row => Convert.ToInt64(row[3])).Single();
-    static readonly object?[][] Frames = ((object?[])GachaRules.ReadRows("Live.LiveDropFrameGroupMaster.json")
-        .Cast<object?[]>().Single(row => Convert.ToInt64(row[0]) == NormalGroup)[1]!).Cast<object?[]>().ToArray();
+    static readonly Dictionary<long, long> FrameGroups = GachaRules.ReadRows("Live.LiveSettingMaster.json")
+        .Cast<object?[]>().ToDictionary(row => Convert.ToInt64(row[0]), row => Convert.ToInt64(row[3]));
+    static readonly Dictionary<long, object?[][]> Frames = GachaRules.ReadRows("Live.LiveDropFrameGroupMaster.json")
+        .Cast<object?[]>().ToDictionary(row => Convert.ToInt64(row[0]), row => ((object?[])row[1]!).Cast<object?[]>().ToArray());
 
     public sealed record Snapshot(bool Ordinary, int BaseStamina, int RequestedMagnification,
-        int EffectiveMagnification, int StaminaBefore, object?[]? Unit)
+        int EffectiveMagnification, int StaminaBefore, object?[]? Unit, long SettingId = 1)
     {
         public int StaminaCost => checked(BaseStamina * EffectiveMagnification);
         public int Experience => StaminaCost;
         public decimal QuantityFactor => BaseStamina * (decimal)RewardMagnifications[EffectiveMagnification] / 20m;
-        public object?[] ToWire() => [1, Ordinary, BaseStamina, RequestedMagnification, EffectiveMagnification, StaminaBefore, Unit];
+        public object?[] ToWire() => [2, Ordinary, BaseStamina, RequestedMagnification, EffectiveMagnification, StaminaBefore, Unit, SettingId];
 
         public static Snapshot FromWire(object?[] row)
         {
-            if (row.Length != 7 || Convert.ToInt32(row[0]) != 1 || row[1] is not bool ordinary
+            if (!(row.Length == 7 && Convert.ToInt32(row[0]) == 1 || row.Length == 8 && Convert.ToInt32(row[0]) == 2)
+                || row[1] is not bool ordinary
                 || Convert.ToInt32(row[2]) < 0 || Convert.ToInt32(row[3]) is < 0 or > 10
                 || Convert.ToInt32(row[4]) is < 0 or > 10 || Convert.ToInt32(row[5]) < 0
                 || row[6] is not (null or object?[]))
                 throw new InvalidDataException("演出开演快照非法");
             var snapshot = new Snapshot(ordinary, Convert.ToInt32(row[2]), Convert.ToInt32(row[3]),
-                Convert.ToInt32(row[4]), Convert.ToInt32(row[5]), (object?[]?)row[6]);
+                Convert.ToInt32(row[4]), Convert.ToInt32(row[5]), (object?[]?)row[6], row.Length == 8 ? Convert.ToInt64(row[7]) : 1);
+            if (!FrameGroups.ContainsKey(snapshot.SettingId)) throw new InvalidDataException("演出奖励设置不存在");
             if (snapshot.EffectiveMagnification > snapshot.RequestedMagnification
                 || snapshot.StaminaCost > snapshot.StaminaBefore)
                 throw new InvalidDataException("演出快照消耗不一致");
@@ -53,14 +63,14 @@ static class LiveRewardRules
     }
 
     public static Snapshot Start(long chartId, bool useStamina, int requested, int stamina,
-        object?[]? unit, bool ordinary)
+        object?[]? unit, bool ordinary, long settingId = 1)
     {
-        if (requested is < 0 or > 10 || stamina < 0)
+        if (requested is < 0 or > 10 || stamina < 0 || !FrameGroups.ContainsKey(settingId))
             throw new BadHttpRequestException(LiveProgressionErrors.InvalidStart);
         var baseStamina = ordinary ? MusicStamina[PlayerProgressionRules.Charts[chartId].MusicMasterId] : 0;
         if (baseStamina < 0) throw new InvalidDataException("歌曲基础体力非法");
         var effective = useStamina && baseStamina > 0 ? Math.Min(requested, stamina / baseStamina) : 0;
-        return new(ordinary, baseStamina, requested, effective, stamina, unit);
+        return new(ordinary, baseStamina, requested, effective, stamina, unit, settingId);
     }
 
     public static int Coins(Snapshot snapshot, long score)
@@ -76,7 +86,7 @@ static class LiveRewardRules
     public static Drop[] Materials(Snapshot snapshot, long score, DateTime now, Func<int, int> choose)
     {
         var drops = new List<Drop>();
-        foreach (var frame in Frames)
+        foreach (var frame in Frames[FrameGroups[snapshot.SettingId]])
         {
             if (frame[8] is DateTime start && now < start || frame[9] is DateTime end && now >= end) continue;
             // AccessoryFormula 没有可验证的开奖概率；历史活动框也不在本次普通材料范围内。

@@ -30,7 +30,7 @@ static class CharacterMissionRules
     }
     static Dictionary<long, bool> ReadCharacters()
     {
-        using var stream = typeof(CharacterMissionRules).Assembly.GetManifestResourceStream("AdminMaster.CharacterMaster.json")
+        using var stream = typeof(CharacterMissionRules).Assembly.GetManifestResourceStream("InventoryMaster.CharacterMaster.json")
             ?? throw new InvalidOperationException("缺少角色主数据");
         using var document = JsonDocument.Parse(stream);
         return document.RootElement.EnumerateArray().ToDictionary(row => row[0].GetInt64(), row => row[11].GetInt64() != 0);

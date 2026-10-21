@@ -2,7 +2,7 @@ using System.Text.Json;
 
 static class CharacterAwakeningRules
 {
-    static readonly JsonElement[] CharacterRows = Read("AdminMaster.CharacterMaster.json");
+    static readonly JsonElement[] CharacterRows = Read("InventoryMaster.CharacterMaster.json");
     static readonly Dictionary<long, long?> Characters = CharacterRows.ToDictionary(r => r[0].GetInt64(), r => r[17].ValueKind == JsonValueKind.Null ? (long?)null : r[17].GetInt64());
     // 当前客户端仅四星卡有独立的 _1 卡面；低稀有度觉醒仍提升属性，但沿用 _0。
     public static readonly long[] DisplayMasterIds = CharacterRows.Where(r => r[5].GetInt32() == 4)
