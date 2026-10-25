@@ -17,10 +17,22 @@ static partial class ApiEndpointMappings
             await state.Logger.LogAsync($"level=INFO operation=account-confirmation-verify requestId={context.TraceIdentifier} outcome=success");
             await codec.WriteApiResultAsync(context, new object?[] { true }, "five-frame");
         });
+        // 引继码只创建一次；已使用过的账号不再设置引继密码，按客户端契约回 false 而不是错误页。
         app.MapMethods("/localap/api/Account/RegisterTakeOverPassword", new[] { "GET", "POST" }, async context =>
         {
             var payload = await AccountRecoveryPayloads.ReadAsync(context, codec, "Password");
-            var registered = await state.AccountService.RegisterTakeOverPasswordAsync(PayloadReaders.ReadApiToken(context), payload[0]);
+            (long UserId, string LinkageCode) registered;
+            try
+            {
+                registered = await state.AccountService.RegisterTakeOverPasswordAsync(PayloadReaders.ReadApiToken(context), payload[0]);
+            }
+            catch (BadHttpRequestException error) when (error.Message is AccountErrors.TakeOverAlreadyUsed)
+            {
+                // 引继码只能使用一次；已使用的账号不再提供引继码，按客户端契约回 false 而不是错误页。
+                await state.Logger.LogAsync($"level=WARN operation=account-takeover-register requestId={context.TraceIdentifier} errorCode={error.Message} outcome=failed");
+                await codec.WriteApiResultAsync(context, new object?[] { false, "" }, "five-frame");
+                return;
+            }
             await state.Logger.LogAsync($"level=INFO operation=account-takeover-register userId={registered.UserId} requestId={context.TraceIdentifier} outcome=success");
             await codec.WriteApiFramesAsync(context, new object?[] { true, registered.LinkageCode },
                 new object?[] { new object?[] { 120, new object?[] { registered.UserId } } }, Array.Empty<object?>(), Array.Empty<object?>());
@@ -31,7 +43,7 @@ static partial class ApiEndpointMappings
             object?[] result;
             try
             {
-                result = await state.AccountService.GetTakeOverAccountAsync(payload[0], payload[1]);
+                result = await state.AccountService.GetTakeOverAccountAsync(context, payload[0], payload[1]);
             }
             catch (BadHttpRequestException error) when (error.Message is AccountErrors.InvalidTakeOverCredentials or AccountErrors.RecoveryRateLimited)
             {

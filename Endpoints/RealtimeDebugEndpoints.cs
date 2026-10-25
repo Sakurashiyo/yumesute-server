@@ -4,12 +4,22 @@ static class RealtimeDebugEndpoints
 {
     public static void MapRealtimeDebugEndpoints(this WebApplication app, LocalServerState state)
     {
-        app.MapGet("/realtime/debug/multi-live/rooms", () =>
+        // 调试端点可冒充任意 hashUserId 操作房间，只允许本机访问。
+        var debug = app.MapGroup("/realtime/debug/multi-live");
+        debug.AddEndpointFilter(async (invocation, next) =>
+        {
+            var remote = invocation.HttpContext.Connection.RemoteIpAddress;
+            if (remote is null || !System.Net.IPAddress.IsLoopback(remote))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            return await next(invocation);
+        });
+
+        debug.MapGet("/rooms", () =>
         {
             return Results.Json(state.MultiLiveRealtime.SnapshotRooms());
         });
 
-        app.MapPost("/realtime/debug/multi-live/join-public", async (HttpContext context) =>
+        debug.MapPost("/join-public", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             var userName = ReadString(context, "userName", "LocalPlayer");
@@ -26,7 +36,7 @@ static class RealtimeDebugEndpoints
             return Results.Json(result);
         });
 
-        app.MapPost("/realtime/debug/multi-live/create-private", async (HttpContext context) =>
+        debug.MapPost("/create-private", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             var userName = ReadString(context, "userName", "LocalPlayer");
@@ -43,13 +53,13 @@ static class RealtimeDebugEndpoints
             return Results.Json(result);
         });
 
-        app.MapGet("/realtime/debug/multi-live/fetch-users", async (HttpContext context) =>
+        debug.MapGet("/fetch-users", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             return Results.Json(await state.MultiLiveRealtime.FetchUsersAsync(hashUserId));
         });
 
-        app.MapPost("/realtime/debug/multi-live/select-music", async (HttpContext context) =>
+        debug.MapPost("/select-music", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             var musicId = ReadLong(context, "musicId", 75);
@@ -59,7 +69,7 @@ static class RealtimeDebugEndpoints
             return Results.Json(await state.MultiLiveRealtime.FetchUsersAsync(hashUserId));
         });
 
-        app.MapPost("/realtime/debug/multi-live/select-difficulty", async (HttpContext context) =>
+        debug.MapPost("/select-difficulty", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             var difficulty = (MusicDifficulties)ReadInt(context, "difficulty", (int)MusicDifficulties.Extra);
@@ -68,14 +78,14 @@ static class RealtimeDebugEndpoints
             return Results.Json(await state.MultiLiveRealtime.FetchUsersAsync(hashUserId));
         });
 
-        app.MapPost("/realtime/debug/multi-live/ready-game", async (HttpContext context) =>
+        debug.MapPost("/ready-game", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             await state.MultiLiveRealtime.ReadyGameAsync(hashUserId);
             return Results.Json(await state.MultiLiveRealtime.FetchUsersAsync(hashUserId));
         });
 
-        app.MapPost("/realtime/debug/multi-live/start-game", async (HttpContext context) =>
+        debug.MapPost("/start-game", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             await state.MultiLiveRealtime.BeforeGameCalculateAsync(hashUserId);
@@ -83,7 +93,7 @@ static class RealtimeDebugEndpoints
             return Results.Json(await state.MultiLiveRealtime.FetchUsersAsync(hashUserId));
         });
 
-        app.MapPost("/realtime/debug/multi-live/sync", async (HttpContext context) =>
+        debug.MapPost("/sync", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             var combo = ReadInt(context, "combo", 100);
@@ -93,7 +103,7 @@ static class RealtimeDebugEndpoints
             return Results.Json(await state.MultiLiveRealtime.FetchUsersAsync(hashUserId));
         });
 
-        app.MapPost("/realtime/debug/multi-live/exit-game", async (HttpContext context) =>
+        debug.MapPost("/exit-game", async (HttpContext context) =>
         {
             var hashUserId = ReadString(context, "hashUserId", "local-user");
             var score = ReadLong(context, "score", 1000000);
@@ -103,7 +113,7 @@ static class RealtimeDebugEndpoints
             return Results.Json(await state.MultiLiveRealtime.FetchUsersAsync(hashUserId));
         });
 
-        app.MapGet("/realtime/debug/multi-live/information/{multiLiveId:long}", (long multiLiveId) =>
+        debug.MapGet("/information/{multiLiveId:long}", (long multiLiveId) =>
         {
             return Results.Json(state.MultiLiveRealtime.GetMultiLiveInformation(multiLiveId));
         });

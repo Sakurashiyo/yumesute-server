@@ -23,6 +23,8 @@ static partial class ApiEndpointMappings
 
         app.MapPost("/localap/api/Account/Register", async context =>
         {
+            // 匿名注册每次都签发五年令牌并插入整套默认数据，必须按来源限流。
+            RequestGuard.GuardRegistration(context);
             var body = await codec.ReadRequestBodyAsync(context);
             var name = PayloadReaders.ReadRegisterName(body) ?? $"Player-{Random.Shared.Next(100000, 999999)}";
             var result = await state.AccountService.RegisterGameAccountAsync(name);

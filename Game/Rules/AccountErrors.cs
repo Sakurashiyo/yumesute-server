@@ -7,5 +7,7 @@ static class AccountErrors
     public const string InvalidTakeOverCredentials = "ACCOUNT_INVALID_TAKEOVER_CREDENTIALS";
     public const string InvalidRecoveryRequest = "ACCOUNT_INVALID_RECOVERY_REQUEST";
     public const string RecoveryRateLimited = "ACCOUNT_RECOVERY_RATE_LIMITED";
+    public const string TakeOverAlreadyUsed = "ACCOUNT_TAKEOVER_ALREADY_USED";
+    public const string RegistrationRateLimited = "ACCOUNT_REGISTRATION_RATE_LIMITED";
     public const string InvalidBirthDate = "ACCOUNT_INVALID_BIRTH_DATE";
 }

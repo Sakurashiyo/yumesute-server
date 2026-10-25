@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.HttpOverrides;
+
 DotEnv.Load(Path.Combine(AppContext.BaseDirectory, ".env"));
 DotEnv.Load(Path.Combine(Directory.GetCurrentDirectory(), "csharp-server", ".env"));
 DotEnv.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
@@ -35,6 +37,14 @@ app.Lifetime.ApplicationStopping.Register(() => realtimeLogger.LogInformation("�
 await DatabaseMigrator.MigrateAsync(state.Database, config);
 
 app.UseRealtimeRequestLogging(realtimeLogger, config.RealtimePort);
+// 反代后 RemoteIpAddress 全是回环地址，限流与引继锁定必须依赖转发头还原真实来源。
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1,
+    KnownIPNetworks = { },
+    KnownProxies = { }
+});
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/api", out var remaining))

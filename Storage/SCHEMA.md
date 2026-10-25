@@ -21,11 +21,11 @@
 
 `user_confirmation_codes` 按账号保存 nonce、有效期、消费状态和失败次数；确认码由服务端密钥派生，不存储明文。
 
-`user_account_recovery` 按账号保存唯一 10 位引继码、16 字节密码盐、32 字节 PBKDF2-SHA512 哈希、凭据签发 nonce、首次引继标记、失败次数和锁定时间。密码采用 210000 次迭代；账号删除时两张恢复表级联清理。引继使用账号行锁，在同一事务内撤销目标账号旧会话和登录凭据、登记替代凭据；失败整体回滚，重试不会影响新会话或其他账号。
+`user_account_recovery` 按账号保存唯一 10 位引继码、16 字节密码盐、32 字节 PBKDF2-SHA512 哈希、凭据签发 nonce、首次引继标记、失败次数和锁定时间。密码采用 210000 次迭代；账号删除时两张恢复表级联清理。引继码在首次设置引继密码时创建，之后长期保存在库中且不会变更；`claimed` 一旦置为 true 该码立即永久失效，领取时同时把盐与哈希替换为随机值，之后既不能再用该码引继也不能重新设置引继密码（返回 `ACCOUNT_TAKEOVER_ALREADY_USED`，接口回 `{false, ""}`）。引继使用账号行锁，在同一事务内撤销目标账号旧会话和登录凭据、登记替代凭据；失败整体回滚，重试不会影响新会话或其他账号。
 
 `user_states` 保存兼容旧逻辑用的 JSON 状态快照。
 
-`user_game_states` 保存等级、经验、体力、新手教程状态、已读标记、登录时间等游戏进度；`stamina_jewel_recovery_count` 对应官方 `key0` 中的钻石恢复体力次数。
+`user_game_states` 保存等级、经验、体力、新手教程状态、已读标记、登录时间等游戏进度；新账号以客户端 `TutorialStatus.Start`（0）开始教程，完成状态为 99。启动迁移保留现有教程进度；`stamina_jewel_recovery_count` 对应官方 `key0` 中的钻石恢复体力次数。
 
 `stamina_recovery_checkpoint_at` 保存自然恢复计时起点；每 80 秒恢复 1 点，完整周期在玩家行锁内入账，保留未满周期的余秒，并限制在 `max_stamina`。已超过上限的体力不截断。新增列以迁移时间初始化旧存档，不把历史恢复记录误算成离线收益。满体力开始消耗时重置起点，使用恢复道具或钻石时同步重置。客户端 User key4 为 `MaxStaminaRestoredAt`，下发的是计时起点加尚缺体力对应的恢复时长，不能直接使用历史 `stamina_recovered_at`。
 
@@ -192,7 +192,7 @@ union130 的 `LiveAchievement` 按存档计算 `[userId, 已购买OLIVIER数量,
 `CopyTo` 只复制本人最高分至本人持有编队，按角色/装备主数据 ID 解析当前持有实例，使用当前养成状态，不回滚养成等级；装备已不存在时整笔复制拒绝并回滚。错误码集中于 `AuditionErrors`：`AUDITION_NOT_FOUND`/`AUDITION_PARTY_NOT_FOUND` 对应 404，`AUDITION_INVALID_START` 对应 400，`AUDITION_PARTY_UNAVAILABLE` 对应 409，均返回五帧 MessagePack；逐音符/Star Act 非法记录复用 `LIVE_INVALID_FINISH`。完整依据及未还原规则见 `devlog/2026-10-20-auditions.md`。
 
 ## 活动、商店和媒体状态表
-`user_story_event_states` 保存 key 101 的活动点数、排名和提示阅读状态。`user_event_exchange_shop_states` 保存 key 102 的活动兑换商店兑换次数。`user_shop_purchase_states` 保存 key 108 的商店购买次数和限购刷新状态。`user_episode_read_states` 保存 key 95 的剧情阅读状态。`user_photo_records` 保存 key 123 的生成照片记录。`user_photo_states` 保存 key 124 的照片系统状态。`user_music_video_watch_states` 保存 key 131 的音乐视频观看状态。`user_raw_union_states` 作为 key 193 等尚未确认语义的用户状态兜底表。
+`user_story_event_states` 保存 key 101 的活动点数、排名和提示阅读状态。`user_event_exchange_shop_states` 保存 key 102 的活动兑换商店兑换次数。`user_shop_purchase_states` 保存 key 108 的商店购买次数和限购刷新状态。`user_episode_read_states` 保存 key 95 的剧情阅读状态。`user_comic_read_states` 保存漫画阅读的集数与发奖标记（每集只发一次 30 免费宝石）。`user_photo_records` 保存 key 123 的生成照片记录。`user_photo_states` 保存 key 124 的照片系统状态。`user_music_video_watch_states` 保存 key 131 的音乐视频观看状态。`user_raw_union_states` 作为 key 193 等尚未确认语义的用户状态兜底表。
 `user_photo_album_arrangements` 保存 key 125 的相册简单/详细布局，`layout_payload` 以嵌套 MessagePack 二进制保存客户端布局，避免丢失位置、缩放、旋转等字段。
 
 ## 官方 data/user 玩家状态补充表
@@ -229,7 +229,7 @@ union130 的 `LiveAchievement` 按存档计算 `[userId, 已购买OLIVIER数量,
 
 ## Mission Pass
 
-`user_mission_passes` 按 `("userId", mission_pass_master_id)` 唯一保存普通/SP 已领取阶段及各自已领取循环奖励数，账号删除时级联清理。积分复用 `user_item_possessions` 中的 432607；既有积分直接保留，旧版固定领奖响应没有可靠领取记录，首次升级不据此推断已领取阶段。
+`user_mission_passes` 按 `("userId", mission_pass_master_id)` 唯一保存普通/SP 已领取阶段及各自已领取循环奖励数，账号删除时级联清理。`sp_purchased` 记录 SP 轨购买凭据：没有该凭据的账号即使总开关 `SpEnabled` 打开也不会领取 SP 轨奖励，只能看到进度。积分复用 `user_item_possessions` 中的 432607；既有积分直接保留，旧版固定领奖响应没有可靠领取记录，首次升级不据此推断已领取阶段。
 
 客户端 union 97 读取该表，11 个字段依次为 ID、玩家 ID、通行证主数据 ID、SP 开放标记、普通阶段、SP 阶段、终止标记、普通循环轮次/阶段、SP 循环轮次/阶段。当前最后一期常驻并免费开放 SP，循环轮次从 1 起、阶段为 0–3，领完一轮进入下一轮的阶段 0。旧 `user_player_settings` 表保留原数据，但不再误映射为 union 97。
 
