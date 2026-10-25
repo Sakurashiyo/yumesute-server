@@ -41,6 +41,27 @@ static class LiveBaseScoreRules
             && !HasDynamicBaseScore(unit);
     }
 
+    public static long MaximumScore(int totalStatus, double coefficient, double basePercentage)
+    {
+        if (totalStatus <= 0 || !double.IsFinite(coefficient) || coefficient < 0
+            || !double.IsFinite(basePercentage) || basePercentage < 0) return 0;
+        return checked((long)Math.Ceiling(10d * totalStatus * coefficient * (1d + basePercentage / 100d)));
+    }
+
+    // 谱面音符事件下限：开演快照里的技能时轴按秒记录每个触发的 Sense，
+    // 同一秒同一 Sense 在提交记录里只能出现一次，因此它是有效的音符数下界。
+    public static int MinimumNoteCount(object?[] unit)
+    {
+        if (unit.Length != 12 || unit[1] is not Dictionary<int, object?> timings) return 0;
+        var count = 0;
+        foreach (var value in timings.Values)
+        {
+            if (value is not object?[] row || row.Length < 6 || row[5] is not object?[] senses) continue;
+            count += senses.Select(sense => LiveUnitRules.I(sense)).Where(id => id > 0).Distinct().Count();
+        }
+        return count;
+    }
+
     static bool HasDynamicBaseScore(object? value)
     {
         if (value is not object?[] rows) return false;

@@ -11,6 +11,7 @@ static class LiveSkillScoreRules
     public static bool CanRecalculate(object?[] unit, object?[] finish)
     {
         if (finish.Length != 10 || finish[2] is not null) return false;
+        // 带动态效果（含协力附加分）的技能分不能安全复算：保留客户端数值，但由调用方按分数上界校验。
         if (LiveUnitRules.Rows(unit[3]).Length > 0) return false;
         foreach (var sense in LiveUnitRules.Rows(unit[2]))
         {

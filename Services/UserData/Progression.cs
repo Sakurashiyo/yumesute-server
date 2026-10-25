@@ -194,26 +194,36 @@ sealed partial class UserDataService
             if (reader.IsDBNull(6)) throw new BadHttpRequestException(LiveProgressionErrors.SessionMissing, 409);
             snapshot = LiveRewardRules.Snapshot.FromWire((object?[])MsgPack.Decode(reader.GetFieldValue<byte[]>(6))!);
         }
+        // 手动普通演出必须提交逐音符记录；汇总格式会跳过服务端复算，直接采信客户端分数。
+        if (snapshot.Ordinary && !auto && (submitted is not { Length: 10 } || submitted[2] is not null))
+            throw new BadHttpRequestException(LiveProgressionErrors.InvalidFinish);
         var chart = PlayerProgressionRules.Charts[chartId];
+        // 复算资格由服务端会话快照决定，客户端提交的形态不能关闭复算。
+        var mustRecalculate = !auto && snapshot.Ordinary && snapshot.Unit is not null;
         var baseScoreRecalculated = false;
         var skillScoreRecalculated = false;
         var recalculated = submitted;
-        if (snapshot.Ordinary && !auto && snapshot.Unit is not null && submitted is { Length: 10 }
-            && submitted[2] is null && LiveBaseScoreRules.CanRecalculate(snapshot.Unit, submitted))
+        // 客户端上报的总分只用于比对，入库分数一律取服务端复算结果。
+        var reportedScore = score;
+        if (mustRecalculate && submitted is { Length: 10 }
+            && LiveBaseScoreRules.CanRecalculate(snapshot.Unit!, submitted))
         {
-            recalculated = LiveBaseScoreRules.Recalculate(snapshot.Unit, submitted);
+            recalculated = LiveBaseScoreRules.Recalculate(snapshot.Unit!, submitted);
             baseScoreRecalculated = true;
-        }
-        if (mode is LiveRewardRules.Mode.Ordinary or LiveRewardRules.Mode.Audition && snapshot.Ordinary && !auto && snapshot.Unit is not null
-            && recalculated is not null && LiveSkillScoreRules.CanRecalculate(snapshot.Unit, recalculated))
-        {
-            recalculated = LiveSkillScoreRules.Recalculate(snapshot.Unit, recalculated);
-            skillScoreRecalculated = true;
-        }
-        if (baseScoreRecalculated || skillScoreRecalculated)
-        {
+            if (LiveSkillScoreRules.CanRecalculate(snapshot.Unit!, recalculated!))
+            {
+                recalculated = LiveSkillScoreRules.Recalculate(snapshot.Unit!, recalculated!);
+                skillScoreRecalculated = true;
+            }
             finish = LiveFinishValidation.Normalize(recalculated!);
             score = Convert.ToInt64(finish[0]);
+            if (score != reportedScore) throw new BadHttpRequestException(LiveProgressionErrors.InvalidFinish);
+            ValidateNoteCount(snapshot.Unit!, finish);
+        }
+        else
+        {
+            // 自动演出、含动态效果或旧会话无法复算，此时至少校验分数不超过该编队理论最高分。
+            ValidateScoreWithinBounds(score, snapshot, chartId);
         }
         if (!auto) cleared = FinishLifeIsPositive(finish) && cleared;
         if (!auto) await RecordCharacterMissionLiveAsync(connection,transaction,userId,missionParty,finish,cleared);
@@ -316,6 +326,28 @@ sealed partial class UserDataService
             musicStates.Single(row=>Convert.ToInt64(row[2])==chart.MusicMasterId)[8],
             snapshot.EffectiveMagnification, coins, baseScoreRecalculated, skillScoreRecalculated);
         return settlement;
+    }
+
+    // 只提交少量音符会把「每音符增量 = 权重 / 音符数」放大成满分。
+    // 开演快照里保存了谱面时轴，按其中的音符事件下限校验提交总数。
+    static void ValidateNoteCount(object?[] unit, object?[] finish)
+    {
+        var minimum = LiveBaseScoreRules.MinimumNoteCount(unit);
+        if (minimum <= 0 || finish[4] is not object?[] notes) return;
+        if (notes.Length < minimum)
+            throw new BadHttpRequestException(LiveProgressionErrors.InvalidFinish);
+    }
+
+    static void ValidateScoreWithinBounds(long score, LiveRewardRules.Snapshot snapshot, long chartId)
+    {
+        var chart = PlayerProgressionRules.Charts[chartId];
+        var maximum = snapshot.Unit is { Length: 12 }
+            ? LiveBaseScoreRules.MaximumScore(Convert.ToInt32(snapshot.Unit[5]),
+                LiveBaseScoreRules.Coefficient(chart.Difficulty, false), Convert.ToDouble(snapshot.Unit[9]))
+            : 0;
+        // 没有编队快照的旧会话给不出上界，只拒绝明显不可能的分数。
+        if (maximum > 0 && score > maximum)
+            throw new BadHttpRequestException(LiveProgressionErrors.InvalidFinish);
     }
 
     static Dictionary<int, int> ReadFinishJudges(object?[] finish)
