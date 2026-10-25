@@ -14,7 +14,7 @@ static class DefaultUserState
                 ["exp"] = 0,
                 ["stamina"] = 200,
                 ["staminaMax"] = 50,
-                ["tutorialStatus"] = 99
+                ["tutorialStatus"] = 0
             },
             ["wallet"] = new Dictionary<string, object?>
             {

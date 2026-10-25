@@ -120,7 +120,7 @@ sealed partial class UserDataService
               "userId", stamina, max_stamina, free_jewel, paid_jewel, coin,
               tutorial_status, is_tutorial_finished
             )
-            values ($1, 200, 50, 0, 0, 0, 99, true)
+            values ($1, 200, 50, 0, 0, 0, 0, false)
             on conflict ("userId") do nothing
             """,
             userId);
