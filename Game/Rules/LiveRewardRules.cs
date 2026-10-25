@@ -76,6 +76,8 @@ static class LiveRewardRules
     public static int Coins(Snapshot snapshot, long score)
     {
         if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));
+        // 体力不足一次基础消耗时开演不扣体力；这种零成本场次不发金币，否则体力见底就能无限刷钱。
+        if (snapshot.BaseStamina > 0 && snapshot.StaminaBefore < snapshot.BaseStamina) return 0;
         return checked((int)decimal.Floor(100m * snapshot.QuantityFactor * (1m + score / 5_000_000m)));
     }
 

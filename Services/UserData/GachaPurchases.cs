@@ -21,8 +21,7 @@ sealed partial class UserDataService
         var free=Convert.ToInt32(currency[2]);var paid=Convert.ToInt32(currency[3]);
         if((long)free+paid<detail.Cost)throw new BadHttpRequestException(GachaErrors.Insufficient,409);
         var freeCost=Math.Min(free,detail.Cost);free-=freeCost;paid-=detail.Cost-freeCost;
-        await ExecuteAsync(connection,transaction,"update user_item_currencies set free_jewel=$2,paid_jewel=$3 where \"userId\"=$1",userId,free,paid);
-        await ExecuteAsync(connection,transaction,"update user_game_states set free_jewel=$2,paid_jewel=$3,updated_at=now() where \"userId\"=$1",userId,free,paid);
+        await SetJewelsAsync(connection,transaction,userId,free,paid);
         var rewards=new List<object?>();var changed=new List<object?>();
         for(var i=0;i<detail.Count;i++)
         {

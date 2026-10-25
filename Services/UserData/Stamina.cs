@@ -48,14 +48,19 @@ sealed partial class UserDataService
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
+            // 与其它货币路径统一加账号锁，避免并发重复消耗与先扣道具后加体力交错。
+            await LockLessonUserAsync(connection, transaction, userId.Value);
             var totalRecovery = 0;
             foreach (var (itemMasterId, requestedQuantity) in requestedItems)
             {
                 var quantity = Math.Max(requestedQuantity, 0);
                 if (quantity <= 0) continue;
 
-                totalRecovery += CalculateStaminaItemRecovery(itemMasterId) * quantity;
+                var recoverPerItem = CalculateStaminaItemRecovery(itemMasterId);
+                if (recoverPerItem <= 0) continue;
+                // 未持有足够道具时整个请求失败，不能先钳到 0 再照常发放体力。
                 var itemRow = await ConsumeItemPossessionAsync(connection, transaction, userId.Value, itemMasterId, quantity);
+                totalRecovery = checked(totalRecovery + checked(recoverPerItem * quantity));
                 presentData.Add(DataObject(27, itemRow));
             }
 
@@ -66,7 +71,7 @@ sealed partial class UserDataService
                     transaction,
                     """
                     update user_game_states
-                    set stamina = stamina + $2,
+                    set stamina = greatest(stamina, max_stamina) + least($2, greatest(max_stamina - stamina, 0)),
                         stamina_recovered_at = now(),
                         stamina_recovery_checkpoint_at = now(),
                         updated_at = now()
@@ -94,28 +99,38 @@ sealed partial class UserDataService
         if (userId is null) return Array.Empty<object?>();
 
         await EnsureDefaultUserDataAsync(userId.Value);
-        var times = Math.Max(ReadIntQuery(context, "times") ?? 1, 1);
+        var times = ReadIntQuery(context, "times") ?? 1;
+        // 恢复次数直接决定费用与回复量，必须限定在官方区间内，避免负数/溢出把费用算成 0。
+        if (times is < 1 or > 10)
+            throw new BadHttpRequestException(StaminaErrors.InvalidRecoveryCount, StatusCodes.Status400BadRequest);
 
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
+            // 与其它货币路径共用账号锁，避免并发双发各自加一次体力。
+            await LockLessonUserAsync(connection, transaction, userId.Value);
             var (rank, maxStamina) = await ReadRankAndMaxStaminaAsync(connection, transaction, userId.Value);
             var recovery = CalculateJewelStaminaRecovery(rank, maxStamina, times);
             var jewelCost = CalculateJewelStaminaRecoveryCost(times);
+            var currency = await ReadCurrencyAsync(connection, transaction, userId.Value);
+            var free = Convert.ToInt32(currency[2]);
+            var paid = Convert.ToInt32(currency[3]);
+            if ((long)free + paid < jewelCost)
+                throw new BadHttpRequestException(StaminaErrors.JewelInsufficient, StatusCodes.Status409Conflict);
+            var freeCost = Math.Min(free, jewelCost);
+            var nextFree = free - freeCost;
+            var nextPaid = checked(paid - (jewelCost - freeCost));
 
             await ExecuteAsync(
                 connection,
                 transaction,
                 """
                 update user_game_states
-                set stamina = stamina + $2,
+                set stamina = greatest(stamina, max_stamina) + least($2, greatest(max_stamina - stamina, 0)),
                     stamina_jewel_recovery_count = greatest(stamina_jewel_recovery_count, $3),
-                    free_jewel = greatest(free_jewel - $4, 0),
-                    paid_jewel = case
-                      when free_jewel >= $4 then paid_jewel
-                      else greatest(paid_jewel - ($4 - free_jewel), 0)
-                    end,
+                    free_jewel = $4,
+                    paid_jewel = $5,
                     stamina_recovered_at = now(),
                     stamina_recovery_checkpoint_at = now(),
                     updated_at = now()
@@ -124,22 +139,21 @@ sealed partial class UserDataService
                 userId.Value,
                 recovery,
                 times,
-                jewelCost);
+                nextFree,
+                nextPaid);
 
             await ExecuteAsync(
                 connection,
                 transaction,
                 """
                 update user_item_currencies
-                set free_jewel = greatest(free_jewel - $2, 0),
-                    paid_jewel = case
-                      when free_jewel >= $2 then paid_jewel
-                      else greatest(paid_jewel - ($2 - free_jewel), 0)
-                    end
+                set free_jewel = $2,
+                    paid_jewel = $3
                 where "userId" = $1
                 """,
                 userId.Value,
-                jewelCost);
+                nextFree,
+                nextPaid);
 
             await transaction.CommitAsync();
         }
@@ -201,7 +215,8 @@ sealed partial class UserDataService
     static int CalculateJewelStaminaRecoveryCost(int times)
     {
         // 官方 times=4 的抓包扣了 230 钻；先按第 n 次恢复费用 50 + 60 * (n - 1) 近似。
-        return Math.Max(0, 50 + ((times - 1) * 60));
+        if (times is < 1 or > 10) throw new ArgumentOutOfRangeException(nameof(times));
+        return checked(50 + ((times - 1) * 60));
     }
 
     static async Task<(int Rank, int MaxStamina)> ReadRankAndMaxStaminaAsync(
@@ -231,24 +246,24 @@ sealed partial class UserDataService
         long itemMasterId,
         int quantity)
     {
+        // 带持有量守卫的增量扣减；影响行数为 0 说明道具不足，必须让整个请求失败。
         await using var command = new NpgsqlCommand(
             """
-            insert into user_item_possessions (id, "userId", item_master_id, quantity)
-            values ($1, $2, $3, 0)
-            on conflict ("userId", item_master_id)
-            do update set quantity = greatest(user_item_possessions.quantity - $4, 0),
-                          updated_at = now()
+            update user_item_possessions
+            set quantity = quantity - $3,
+                updated_at = now()
+            where "userId" = $1 and item_master_id = $2 and quantity >= $3
             returning id, item_master_id, quantity
             """,
             connection,
             transaction);
-        command.Parameters.AddWithValue(UserScopedId(userId, itemMasterId));
         command.Parameters.AddWithValue(userId);
         command.Parameters.AddWithValue(itemMasterId);
         command.Parameters.AddWithValue(quantity);
 
         await using var reader = await command.ExecuteReaderAsync();
-        await reader.ReadAsync();
+        if (!await reader.ReadAsync())
+            throw new BadHttpRequestException(StaminaErrors.ItemInsufficient, StatusCodes.Status409Conflict);
         return new object?[] { reader.GetInt64(0), reader.GetInt64(1), reader.GetInt32(2) };
     }
 }

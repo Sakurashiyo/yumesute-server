@@ -27,15 +27,24 @@ sealed partial class UserDataService
             lastReceivedAt = reader.IsDBNull(0) ? null : reader.GetDateTime(0);
         }
         var now = DateTime.UtcNow;
+        // 首次入社以入社时间起算，不能把「从未领取」当成无限累计白送 300 点。
+        if (lastReceivedAt is null)
+        {
+            await ExecuteAsync(connection, transaction, """
+                update user_circle_memberships set stamina_last_received_at=$2 where "userId"=$1
+                """, userId, now);
+            await transaction.CommitAsync();
+            return (new object?[] { false }, Array.Empty<object?>());
+        }
         // 客户端按完整小时累计：每日产量 × 完整小时 / 24；最多储存 300 点。
-        var elapsedHours = lastReceivedAt is null ? double.MaxValue : Math.Max(0, (now - lastReceivedAt.Value).TotalHours);
+        var elapsedHours = Math.Max(0, (now - lastReceivedAt.Value).TotalHours);
         var amount = (int)Math.Min(300, Math.Floor(Math.Floor(elapsedHours) * dailyStamina / 24));
         if (amount == 0) return (new object?[] { false }, Array.Empty<object?>());
         await ExecuteAsync(connection, transaction, """
             update user_circle_memberships set stamina_last_received_at=$2 where "userId"=$1
             """, userId, now);
         await ExecuteAsync(connection, transaction, """
-            update user_game_states set stamina=stamina+$2, updated_at=now() where "userId"=$1
+            update user_game_states set stamina=greatest(stamina, max_stamina) + least($2, greatest(max_stamina - stamina,0)), updated_at=now() where "userId"=$1
             """, userId, amount);
         await transaction.CommitAsync();
         context.RequestServices.GetRequiredService<ILogger<UserDataService>>()

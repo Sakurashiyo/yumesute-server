@@ -30,20 +30,22 @@ sealed partial class UserDataService
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
+            // 与其它发奖路径共用账号锁，避免并发重复领取同一关卡的奖励。
+            await LockLessonUserAsync(connection, transaction, userId.Value);
             var state = await ReadDugongRunStateAsync(connection, transaction, userId.Value);
             var cleared = state.ClearedCourseIds.ToHashSet();
             var noMistake = state.NoMistakeCourseIds.ToHashSet();
             var courseId = (int)Math.Clamp(dugongRunCourseMasterId, 1, int.MaxValue);
 
-            if (clearType >= 1)
+            // 奖励只在首次达成时发放；重复上报同一结果不再产生收益。
+            var rewardEligible = clearType switch
             {
-                cleared.Add(courseId);
-            }
-
-            if (clearType >= 2)
-            {
-                noMistake.Add(courseId);
-            }
+                1 => !cleared.Contains(courseId),
+                2 => !noMistake.Contains(courseId),
+                _ => throw new BadHttpRequestException(DugongRunErrors.InvalidClearType, StatusCodes.Status400BadRequest)
+            };
+            if (clearType >= 1) cleared.Add(courseId);
+            if (clearType >= 2) noMistake.Add(courseId);
 
             var reward = DugongRunRewardFor(clearType);
             await UpsertDugongRunStateAsync(
@@ -52,16 +54,17 @@ sealed partial class UserDataService
                 userId.Value,
                 cleared.Order().ToArray(),
                 noMistake.Order().ToArray());
-            await UpsertItemQuantityAsync(connection, transaction, userId.Value, reward.ItemMasterId, reward.Quantity);
+            if (rewardEligible)
+                await UpsertItemQuantityAsync(connection, transaction, userId.Value, reward.ItemMasterId, reward.Quantity);
 
             await transaction.CommitAsync();
 
             await using var readConnection = await database.OpenConnectionAsync();
             var itemRow = await ReadItemPossessionAsync(readConnection, userId.Value, reward.ItemMasterId)
-                          ?? new object?[] { UserScopedId(userId.Value, reward.ItemMasterId), reward.ItemMasterId, reward.Quantity };
+                          ?? new object?[] { UserScopedId(userId.Value, reward.ItemMasterId), reward.ItemMasterId, 0 };
 
             return new DugongRunClearResult(
-                new object?[] { BuildRewardRow(reward.ItemMasterId, reward.Quantity) },
+                rewardEligible ? new object?[] { BuildRewardRow(reward.ItemMasterId, reward.Quantity) } : Array.Empty<object?>(),
                 new object?[]
                 {
                     DataObject(177, BuildDugongRunStateRow(userId.Value, cleared.Order().ToArray(), noMistake.Order().ToArray())),
@@ -92,9 +95,12 @@ sealed partial class UserDataService
 
     static (int ItemMasterId, int Quantity) DugongRunRewardFor(int clearType)
     {
-        return clearType >= 2
-            ? (DugongRunNoMistakeRewardItemMasterId, 15)
-            : (DugongRunClearRewardItemMasterId, 150);
+        return clearType switch
+        {
+            2 => (DugongRunNoMistakeRewardItemMasterId, 15),
+            1 => (DugongRunClearRewardItemMasterId, 150),
+            _ => throw new BadHttpRequestException(DugongRunErrors.InvalidClearType, StatusCodes.Status400BadRequest)
+        };
     }
 
     static object?[] BuildRewardRow(int itemMasterId, int quantity)

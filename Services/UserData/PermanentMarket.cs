@@ -35,6 +35,7 @@ sealed partial class UserDataService
         var coin = Convert.ToInt32(currency[1]);
         var free = Convert.ToInt32(currency[2]);
         var paid = Convert.ToInt32(currency[3]);
+        var coinBefore = coin;
         if(product.CostType == 12)
         {
             if(coin < cost) throw new BadHttpRequestException(PermanentMarketErrors.Insufficient,409);
@@ -81,8 +82,11 @@ sealed partial class UserDataService
             present.Add(DataObject(key,value));
         }
         else throw new InvalidOperationException($"常设商品奖励类型尚未实现：{product.Type}");
-        await ExecuteAsync(connection,transaction,"update user_item_currencies set coin=$2,free_jewel=$3,paid_jewel=$4 where \"userId\"=$1",userId,coin,free,paid);
-        await ExecuteAsync(connection,transaction,"update user_game_states set coin=$2,free_jewel=$3,paid_jewel=$4,updated_at=now() where \"userId\"=$1",userId,coin,free,paid);
+        await SetJewelsAsync(connection,transaction,userId,free,paid);
+        // 金币按增量写回，保留并发产生的其它增量；余额守卫在扣费时已经做过。
+        var coinDelta = coin - coinBefore;
+        if (coinDelta != 0)
+            await AddCurrencyIncrementAsync(connection,transaction,userId,"coin",coinDelta);
         var purchase = new object?[] {productId,bought+quantity};
         await SavePermanentMarketDataAsync(connection,transaction,userId,149,productId.ToString(),purchase);
         present.Add(DataObject(149,purchase));

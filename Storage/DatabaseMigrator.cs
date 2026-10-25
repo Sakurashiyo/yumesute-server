@@ -954,14 +954,18 @@ static class DatabaseMigrator
       coin integer not null default 0,
       last_login_at timestamptz not null default now(),
       splash_last_displayed_at timestamptz not null default now(),
-      tutorial_status integer not null default 99,
+      tutorial_status integer not null default 0,
       game_start_at timestamptz not null default now(),
       home_last_transition_at timestamptz not null default now(),
       notification_read_at timestamptz not null default now(),
-      is_tutorial_finished boolean not null default true,
+      is_tutorial_finished boolean not null default false,
       has_unread_game_hint boolean not null default false,
       updated_at timestamptz not null default now()
     );
+
+    -- 仅修正后续新记录的默认值，保留已有账号的教程进度。
+    alter table user_game_states alter column tutorial_status set default 0;
+    alter table user_game_states alter column is_tutorial_finished set default false;
 
     alter table user_game_states
       add column if not exists stamina_jewel_recovery_count integer not null default 0;
@@ -1372,6 +1376,16 @@ static class DatabaseMigrator
 
     alter table user_episode_read_states add column if not exists has_read_all boolean not null default false;
 
+    -- 漫画阅读奖励只按集数发放一次，重放接口不能再产生宝石。
+    create table if not exists user_comic_read_states (
+      "userId" bigint not null references user_accounts(id) on delete cascade,
+      comic_episode_id bigint not null,
+      reward_claimed boolean not null default false,
+      read_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      primary key ("userId", comic_episode_id)
+    );
+
     create table if not exists user_photo_records (
       id bigint primary key,
       "userId" bigint not null references user_accounts(id) on delete cascade,
@@ -1669,13 +1683,6 @@ static class DatabaseMigrator
     insert into user_game_states ("userId", free_jewel, coin)
     select id, 999, 10000 from user_accounts
     on conflict ("userId") do nothing;
-
-    update user_game_states
-    set tutorial_status = 99,
-        is_tutorial_finished = true,
-        updated_at = now()
-    where tutorial_status <> 99
-       or not is_tutorial_finished;
 
     insert into user_profiles (
       "userId",

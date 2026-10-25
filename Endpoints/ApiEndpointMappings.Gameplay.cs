@@ -344,7 +344,8 @@ static partial class ApiEndpointMappings
         app.MapPost("/localap/api/Comics/Read/{comicEpisodeId:long}", async (HttpContext context, long comicEpisodeId) =>
         {
             await logger.LogAsync($"comics-read comicEpisodeId={comicEpisodeId} query={context.Request.QueryString}");
-            await codec.WriteApiResultAsync(context, GameResults.ComicReadRewardResult());
+            var rewards = await state.UserDataService.ReadComicAsync(context, comicEpisodeId);
+            await codec.WriteApiResultAsync(context, rewards);
         });
 
         app.MapPost("/localap/api/Missions/receiveRewards", async context =>

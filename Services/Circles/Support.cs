@@ -123,8 +123,17 @@ sealed partial class UserDataService
         }
         if(coin>0)
         {
-            await ExecuteAsync(db,tx,"update user_game_states set coin=coin-$2,updated_at=now() where \"userId\"=$1",user,coin);
-            await ExecuteAsync(db,tx,"update user_item_currencies set coin=coin-$2 where \"userId\"=$1",user,coin);
+            // 两表都带余额守卫；任一失败即整笔回滚，避免钱包出现负数。
+            await using (var wallet=new NpgsqlCommand("update user_game_states set coin=coin-$2,updated_at=now() where \"userId\"=$1 and coin >= $2",db,tx))
+            {
+                wallet.Parameters.AddWithValue(user); wallet.Parameters.AddWithValue(coin);
+                if(await wallet.ExecuteNonQueryAsync()!=1) return await Failure();
+            }
+            await using (var wallet=new NpgsqlCommand("update user_item_currencies set coin=coin-$2 where \"userId\"=$1 and coin >= $2",db,tx))
+            {
+                wallet.Parameters.AddWithValue(user); wallet.Parameters.AddWithValue(coin);
+                if(await wallet.ExecuteNonQueryAsync()!=1) return await Failure();
+            }
             await ExecuteAsync(db,tx,"update system_circle_support set donated_coin=donated_coin+$3 where circle_id=$1 and company=$2",circleId,(int)company,coin);
         }
         var present=new List<object?>();

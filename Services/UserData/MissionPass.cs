@@ -3,7 +3,7 @@ using Npgsql;
 sealed partial class UserDataService
 {
     public sealed record MissionPassResponse(object?[] Result, object?[] Present);
-    sealed record MissionPassState(int Free, int Sp, int FreeLoops, int SpLoops);
+    sealed record MissionPassState(int Free, int Sp, int FreeLoops, int SpLoops, bool SpPurchased);
 
     static Task EnsureMissionPassAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId) =>
         ExecuteAsync(connection, transaction, """
@@ -14,18 +14,19 @@ sealed partial class UserDataService
     static async Task<MissionPassState> ReadMissionPassAsync(NpgsqlConnection connection, long userId)
     {
         await using var command = new NpgsqlCommand("""
-            select free_phase,sp_phase,free_loop_rewards,sp_loop_rewards from user_mission_passes
+            select free_phase,sp_phase,free_loop_rewards,sp_loop_rewards,sp_purchased from user_mission_passes
             where "userId"=$1 and mission_pass_master_id=$2
             """, connection);
         command.Parameters.AddWithValue(userId);
         command.Parameters.AddWithValue(MissionPassRules.Id);
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) throw new InvalidOperationException("Mission Pass 存档未初始化");
-        return new(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3));
+        return new(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetBoolean(4));
     }
 
     static object?[] MissionPassData(long userId, MissionPassState state, MissionPassSettings settings) =>
-        [UserScopedId(userId, 9701), userId, MissionPassRules.Id, settings.SpEnabled, state.Free, state.Sp, !settings.IsOpen(DateTimeOffset.UtcNow),
+        [UserScopedId(userId, 9701), userId, MissionPassRules.Id, settings.SpEnabled && state.SpPurchased, state.Free, state.Sp,
+            !settings.IsOpen(DateTimeOffset.UtcNow),
             state.FreeLoops / 4 + 1, state.FreeLoops % 4, state.SpLoops / 4 + 1, state.SpLoops % 4];
 
     static async Task<int> ReadMissionPointsAsync(NpgsqlConnection connection, long userId)
@@ -54,13 +55,15 @@ sealed partial class UserDataService
         var points = await ReadMissionPointsAsync(connection, userId);
         var reached = settings.Stages.Count(stage => stage.Points <= points);
         var loops = MissionPassRules.ReachedLoops(points);
+        // 只有持有 SP 购买凭据的玩家才能领 SP 轨；否则总开关打开就等于全服白送历史奖励。
+        var spAvailable = settings.SpEnabled && state.SpPurchased;
         var pending = new List<MissionPassRules.Reward>();
         foreach (var stage in settings.Stages.Where(stage => stage.Phase <= reached))
-            pending.AddRange(stage.Rewards.Where(reward => (!reward.Sp || settings.SpEnabled)
+            pending.AddRange(stage.Rewards.Where(reward => (!reward.Sp || spAvailable)
                 && stage.Phase > (reward.Sp ? state.Sp : state.Free)));
         for (var index = Math.Min(state.FreeLoops, state.SpLoops); index < loops; index++)
             pending.AddRange(settings.LoopRewards[index % 4]
-                .Where(reward => (!reward.Sp || settings.SpEnabled) && index >= (reward.Sp ? state.SpLoops : state.FreeLoops)));
+                .Where(reward => (!reward.Sp || spAvailable) && index >= (reward.Sp ? state.SpLoops : state.FreeLoops)));
 
         var changed = new List<object?>();
         var rewards = new List<object?>();
@@ -78,18 +81,16 @@ sealed partial class UserDataService
             }
             else if (group.Key.Type is 12 or 13)
             {
+                // 两张货币表都要同步增量更新，避免主页钱包与商店余额分叉。
                 var column = group.Key.Type == 12 ? "coin" : "free_jewel";
-                await ExecuteAsync(connection, transaction,
-                    $"update user_item_currencies set {column}={column}+$2 where \"userId\"=$1", userId, quantity);
-                await ExecuteAsync(connection, transaction,
-                    $"update user_game_states set {column}={column}+$2,updated_at=now() where \"userId\"=$1", userId, quantity);
+                await AddCurrencyIncrementAsync(connection, transaction, userId, column, quantity);
                 rewards.Add(GachaRules.Received(group.Key.Type, group.Key.MasterId, quantity));
             }
             else throw new InvalidDataException($"Mission Pass 奖励类型未实现：{group.Key.Type}");
         }
 
-        var next = new MissionPassState(Math.Max(state.Free, reached), settings.SpEnabled ? Math.Max(state.Sp, reached) : state.Sp,
-            Math.Max(state.FreeLoops, loops), settings.SpEnabled ? Math.Max(state.SpLoops, loops) : state.SpLoops);
+        var next = new MissionPassState(Math.Max(state.Free, reached), spAvailable ? Math.Max(state.Sp, reached) : state.Sp,
+            Math.Max(state.FreeLoops, loops), spAvailable ? Math.Max(state.SpLoops, loops) : state.SpLoops, state.SpPurchased);
         await ExecuteAsync(connection, transaction, """
             update user_mission_passes set free_phase=$3,sp_phase=$4,free_loop_rewards=$5,
                 sp_loop_rewards=$6,updated_at=now() where "userId"=$1 and mission_pass_master_id=$2
@@ -122,10 +123,7 @@ sealed partial class UserDataService
         var cost = checked(unit * MissionPassRules.ExchangeJewelPerUnit);
         if ((long)free + paid < cost) throw new BadHttpRequestException(MissionPassErrors.Insufficient, 409);
         var freeCost = Math.Min(free, cost); free -= freeCost; paid -= cost - freeCost;
-        await ExecuteAsync(connection, transaction,
-            "update user_item_currencies set free_jewel=$2,paid_jewel=$3 where \"userId\"=$1", userId, free, paid);
-        await ExecuteAsync(connection, transaction,
-            "update user_game_states set free_jewel=$2,paid_jewel=$3,updated_at=now() where \"userId\"=$1", userId, free, paid);
+        await SetJewelsAsync(connection, transaction, userId, free, paid);
         await UpsertItemQuantityAsync(connection, transaction, userId, MissionPassRules.PointItemId, points);
         var present = await MissionPassPresentAsync(connection, userId, await ReadMissionPassAsync(connection, userId), settings, []);
         await transaction.CommitAsync();

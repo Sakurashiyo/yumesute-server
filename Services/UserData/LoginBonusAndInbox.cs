@@ -4,6 +4,12 @@ using LoginBonusReward = LoginBonusRules.Reward;
 
 sealed partial class UserDataService
 {
+    // 客户端的 ReceiveLimitAt 是非空 DateTime；这个远期值表示永久有效。
+    static readonly DateTime InboxNoExpiryLimitUtc = new(2099, 12, 31, 23, 59, 59, DateTimeKind.Utc);
+
+    // 单件礼包的上限，超过这个量级的载荷一定是伪造或损坏的。
+    const int MaxInboxQuantity = 1_000_000;
+
     public async Task<LoginBonusReceiveResult> CheckReceiveLoginBonusAsync(HttpContext context)
     {
         var userId = await GetCurrentUserIdAsync(context);
@@ -114,6 +120,8 @@ sealed partial class UserDataService
 
         await using var connection = await database.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
+        // 先取账号锁再锁礼包行，与其它货币路径保持同一锁顺序，避免反向等待。
+        await LockLessonUserAsync(connection, transaction, userId.Value);
 
         var hasIds = inboxIds is { Count: > 0 };
         var packages = new List<InboxPackageRecord>();
@@ -230,6 +238,8 @@ sealed partial class UserDataService
         var thingType = payload.TryGetProperty("ThingType", out var thingTypeElement) ? thingTypeElement.GetInt32() : 1;
         var masterId = payload.TryGetProperty("MasterId", out var masterIdElement) ? masterIdElement.GetInt64() : 0L;
         var quantity = payload.TryGetProperty("Quantity", out var quantityElement) ? quantityElement.GetInt32() : 1;
+        // 负数或越界数量会把"发放"变成扣款，必须在读取时拒绝。
+        if (quantity is < 1 or > MaxInboxQuantity) throw new InvalidDataException("礼物箱数量非法");
         var message = payload.TryGetProperty("Message", out var messageElement) ? messageElement.GetString() ?? "" : "";
         return new InboxPackageRecord(
             reader.GetInt64(0),
@@ -249,13 +259,14 @@ sealed partial class UserDataService
             package.ThingType,
             package.MasterId,
             package.Quantity,
-            true,
+            package.ExpiresAt is not null,
             receivedAt is not null,
             null,
             package.Message,
             package.CreatedAt,
             receivedAt,
-            package.ExpiresAt
+            // 客户端 key10 是非空 DateTime；无限期由 key4=false 表示，不能发送 nil。
+            package.ExpiresAt ?? InboxNoExpiryLimitUtc
         };
     }
 
@@ -270,18 +281,12 @@ sealed partial class UserDataService
         long userId,
         int amount)
     {
-        await using var command = new NpgsqlCommand(
-            """
-            insert into user_item_currencies ("userId", free_jewel, paid_jewel, coin)
-            values ($1, 0, 0, $2)
-            on conflict ("userId")
-            do update set coin = user_item_currencies.coin + excluded.coin
-            """,
-            connection,
-            transaction);
-        command.Parameters.AddWithValue(userId);
-        command.Parameters.AddWithValue(amount);
-        await command.ExecuteNonQueryAsync();
+        if (amount < 0) throw new InvalidDataException("礼物箱金币数量非法");
+        // 两张货币表必须同步增量更新，否则主页钱包与商店余额会永久分叉。
+        await ExecuteAsync(connection, transaction,
+            "update user_item_currencies set coin=coin+$2 where \"userId\"=$1", userId, amount);
+        await ExecuteAsync(connection, transaction,
+            "update user_game_states set coin=coin+$2,updated_at=now() where \"userId\"=$1", userId, amount);
     }
 
     static async Task<List<object?[]>> ReadInboxPackagesAsync(NpgsqlConnection connection, long userId)
@@ -348,20 +353,9 @@ sealed partial class UserDataService
             var masterId = payload.TryGetProperty("MasterId", out var masterIdElement) ? masterIdElement.GetInt64() : 0L;
             var quantity = payload.TryGetProperty("Quantity", out var quantityElement) ? quantityElement.GetInt32() : 1;
             var message = payload.TryGetProperty("Message", out var messageElement) ? messageElement.GetString() ?? "" : "";
-            result.Add(new object?[]
-            {
-                reader.GetInt64(0),
-                thingType,
-                masterId,
-                quantity,
-                true,
-                false,
-                null,
-                message,
-                reader.GetDateTime(2),
-                null,
-                reader.IsDBNull(3) ? null : reader.GetDateTime(3)
-            });
+            var package = new InboxPackageRecord(reader.GetInt64(0), thingType, masterId, quantity,
+                message, reader.GetDateTime(2), reader.IsDBNull(3) ? null : reader.GetDateTime(3));
+            result.Add(BuildInboxPackageRow(package, null));
         }
         return result;
     }

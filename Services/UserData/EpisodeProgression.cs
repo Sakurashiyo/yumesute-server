@@ -14,9 +14,8 @@ sealed partial class UserDataService
 
     static async Task AddEpisodeJewelsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long userId, int quantity)
     {
+        // AddFreeJewelsAsync 已同时同步 user_game_states；此处不能再加一次。
         await AddFreeJewelsAsync(connection, transaction, userId, quantity);
-        await ExecuteAsync(connection, transaction,
-            "update user_game_states set free_jewel=free_jewel+$2,updated_at=now() where \"userId\"=$1", userId, quantity);
     }
 
     async Task<(object?[] Rewards, object?[] PresentData, object?[] Notifications)> CompleteGeneralEpisodeAsync(

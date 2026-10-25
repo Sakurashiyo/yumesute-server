@@ -327,18 +327,12 @@ sealed partial class UserDataService
         long userId,
         int amount)
     {
-        await using var command = new NpgsqlCommand(
-            """
-            insert into user_item_currencies ("userId", free_jewel, paid_jewel, coin)
-            values ($1, $2, 0, 0)
-            on conflict ("userId")
-            do update set free_jewel = user_item_currencies.free_jewel + excluded.free_jewel
-            """,
-            connection,
-            transaction);
-        command.Parameters.AddWithValue(userId);
-        command.Parameters.AddWithValue(amount);
-        await command.ExecuteNonQueryAsync();
+        if (amount <= 0) throw new InvalidOperationException("宝石奖励数量必须为正");
+        // 两张货币表必须同步增量更新，否则主页钱包与商店余额会永久分叉。
+        await ExecuteAsync(connection, transaction,
+            "update user_item_currencies set free_jewel=free_jewel+$2 where \"userId\"=$1", userId, amount);
+        await ExecuteAsync(connection, transaction,
+            "update user_game_states set free_jewel=free_jewel+$2,updated_at=now() where \"userId\"=$1", userId, amount);
     }
 
     static async Task<object?[]> ReadCurrencyAsync(
