@@ -9,7 +9,12 @@ static class AssetEndpointMappings
         app.MapMethods("/master/{**file}", new[] { "GET", "HEAD" }, async (HttpContext context, string? file) =>
         {
             codec.SetCommonHeaders(context);
-            var normalizedFile = Uri.UnescapeDataString(file ?? "").Replace('\\', '/').TrimStart('/');
+            if (RequestPath.Normalize(file) is not { } decodedFile)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            var normalizedFile = decodedFile.TrimStart('/');
             if (normalizedFile.StartsWith("scenes/", StringComparison.OrdinalIgnoreCase))
             {
                 if (RedirectRemoteAsset(context, config, normalizedFile)) return;
@@ -24,6 +29,13 @@ static class AssetEndpointMappings
             }
 
             var masterData = await state.MasterDataService.GetActiveAsync();
+            // 只有与配置的远程路径一致的请求才返回 masterdata；其余路径一律 404，
+            // 否则 /master/任意字符串 都能拿到完整存档文件。
+            if (!string.Equals(normalizedFile, NormalizeRemotePath(config.MasterDataRemotePath), StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
             if (!File.Exists(masterData.LocalFilePath))
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
@@ -43,29 +55,43 @@ static class AssetEndpointMappings
 
         app.MapMethods("/localassets/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
-            if (RedirectRemoteAsset(context, config, path)) return;
-            await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(path ?? ""), codec);
+            if (RequestPath.Normalize(path) is not { } normalizedPath)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            if (RedirectRemoteAsset(context, config, normalizedPath)) return;
+            await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(normalizedPath), codec);
         });
 
         app.MapMethods("/Resources/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
-            if (RedirectRemoteAsset(context, config, path)) return;
-            await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(path ?? ""), codec);
+            if (RequestPath.Normalize(path) is not { } normalizedPath)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            if (RedirectRemoteAsset(context, config, normalizedPath)) return;
+            await assets.SendLocalFileAsync(context, assets.ResolveAssetFile(normalizedPath), codec);
         });
 
         app.MapMethods("/static/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
-            if (RedirectRemoteAsset(context, config, path)) return;
-            if (ShouldServeTransparentPng(path))
+            if (RequestPath.Normalize(path) is not { } normalizedPath)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            if (RedirectRemoteAsset(context, config, normalizedPath)) return;
+            if (ShouldServeTransparentPng(normalizedPath))
             {
                 await SendTransparentPngAsync(context, codec, state.Logger);
                 return;
             }
 
-            var file = assets.ResolveAssetFile(path ?? "");
-            var normalized = Uri.UnescapeDataString(path ?? "").Replace('\\', '/').TrimStart('/');
-            if (file is null && normalized.StartsWith("Resources/Textures/Banners/", StringComparison.OrdinalIgnoreCase)
-                && normalized.EndsWith(".astc.gz", StringComparison.OrdinalIgnoreCase))
+            var file = assets.ResolveAssetFile(normalizedPath);
+            if (file is null && normalizedPath.TrimStart('/').StartsWith("Resources/Textures/Banners/", StringComparison.OrdinalIgnoreCase)
+                && normalizedPath.EndsWith(".astc.gz", StringComparison.OrdinalIgnoreCase))
             {
                 await SendTransparentAstcAsync(context, codec, state.Logger);
                 return;
@@ -75,14 +101,24 @@ static class AssetEndpointMappings
 
         app.MapMethods("/com.unity.addressables/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
-            if (RedirectRemoteAsset(context, config, path, true)) return;
-            await assets.SendLocalFileAsync(context, assets.ResolveAddressablesFile(path ?? ""), codec);
+            if (RequestPath.Normalize(path) is not { } normalizedPath)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            if (RedirectRemoteAsset(context, config, normalizedPath, true)) return;
+            await assets.SendLocalFileAsync(context, assets.ResolveAddressablesFile(normalizedPath), codec);
         });
 
         app.MapMethods("/localassets/com.unity.addressables/{**path}", new[] { "GET", "HEAD" }, async (HttpContext context, string? path) =>
         {
-            if (RedirectRemoteAsset(context, config, path, true)) return;
-            await assets.SendLocalFileAsync(context, assets.ResolveAddressablesFile(path ?? ""), codec);
+            if (RequestPath.Normalize(path) is not { } normalizedPath)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            if (RedirectRemoteAsset(context, config, normalizedPath, true)) return;
+            await assets.SendLocalFileAsync(context, assets.ResolveAddressablesFile(normalizedPath), codec);
         });
     }
 
@@ -94,11 +130,15 @@ static class AssetEndpointMappings
         return true;
     }
 
+    static string NormalizeRemotePath(string? value) =>
+        (value ?? "").Replace('\\', '/').Trim('/');
+
     static bool TryReadEpisodeDetailAssetSource(string file, out long episodeMasterId)
     {
         episodeMasterId = 0;
         const string marker = "/Episodes/";
-        var normalized = "/" + Uri.UnescapeDataString(file).Replace('\\', '/');
+        // 调用方传入的路径已经归一化，这里不再二次解码。
+        var normalized = "/" + file.Replace('\\', '/');
         var index = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
         if (index < 0 || !normalized.EndsWith("/DetailAssetSource", StringComparison.OrdinalIgnoreCase))
         {
@@ -113,7 +153,7 @@ static class AssetEndpointMappings
     static bool TryReadSceneEpisodeId(string file, out long episodeMasterId)
     {
         episodeMasterId = 0;
-        var fileName = Path.GetFileName(Uri.UnescapeDataString(file).Replace('\\', '/'));
+        var fileName = Path.GetFileName(file.Replace('\\', '/'));
         if (!fileName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)) return false;
 
         var idPart = fileName[..^".bin".Length];
@@ -146,7 +186,7 @@ static class AssetEndpointMappings
 
     static bool ShouldServeTransparentPng(string? path)
     {
-        var normalized = Uri.UnescapeDataString(path ?? "").Replace('\\', '/').Trim('/');
+        var normalized = (path ?? "").Replace('\\', '/').Trim('/');
         if (string.IsNullOrWhiteSpace(normalized)) return true;
 
         var fileName = Path.GetFileName(normalized);

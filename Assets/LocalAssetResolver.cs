@@ -1,8 +1,9 @@
+using System.Collections.Concurrent;
+
 sealed partial class LocalAssetResolver
 {
     readonly LocalConfig config;
     readonly LocalRequestLogger logger;
-
     public LocalAssetResolver(LocalConfig config, LocalRequestLogger logger)
     {
         this.config = config;
@@ -34,20 +35,14 @@ sealed partial class LocalAssetResolver
         if (candidates.Any(candidate => candidate.StartsWith("Notations/", StringComparison.OrdinalIgnoreCase)))
             return null;
 
-        var fileName = Path.GetFileName(requestPath.Replace('\\', '/'));
-        if (!string.IsNullOrWhiteSpace(fileName))
-        {
-            var byName = Directory.EnumerateFiles(config.ResourcesRoot, fileName, SearchOption.AllDirectories).FirstOrDefault() ??
-                Directory.EnumerateFiles(config.AddressablesRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
-            if (byName is not null) return byName;
-        }
-
-        return null;
+        return FindByFileName(Path.GetFileName(requestPath.Replace('\\', '/')));
     }
 
     string? ResolveComicImageFile(string requestPath)
     {
-        var normalized = Uri.UnescapeDataString(requestPath).Replace('\\', '/').TrimStart('/');
+        var decoded = RequestPath.Normalize(requestPath);
+        if (decoded is null) return null;
+        var normalized = decoded.TrimStart('/');
         var comicPath = normalized.StartsWith("Resources/comic/", StringComparison.OrdinalIgnoreCase)
             ? normalized["Resources/".Length..]
             : normalized;
@@ -67,7 +62,9 @@ sealed partial class LocalAssetResolver
 
     string? ResolveVersionedSceneFile(string requestPath)
     {
-        var normalized = Uri.UnescapeDataString(requestPath).Replace('\\', '/').TrimStart('/');
+        var decoded = RequestPath.Normalize(requestPath);
+        if (decoded is null) return null;
+        var normalized = decoded.TrimStart('/');
         if (!normalized.StartsWith("scenes/", StringComparison.OrdinalIgnoreCase)) return null;
 
         var requestedName = Path.GetFileName(normalized);
@@ -114,15 +111,7 @@ sealed partial class LocalAssetResolver
         var catalog = ResolveAddressablesCatalog(requestPath);
         if (catalog is not null) return catalog;
 
-        var fileName = Path.GetFileName(requestPath.Replace('\\', '/'));
-        if (!string.IsNullOrWhiteSpace(fileName))
-        {
-            var byName = Directory.EnumerateFiles(config.ResourcesRoot, fileName, SearchOption.AllDirectories).FirstOrDefault() ??
-                Directory.EnumerateFiles(config.AddressablesRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
-            if (byName is not null) return byName;
-        }
-
-        return null;
+        return FindByFileName(Path.GetFileName(requestPath.Replace('\\', '/')));
     }
 
     public async Task SendLocalFileAsync(HttpContext context, string? filePath, ApiCodec codec)
@@ -167,7 +156,9 @@ sealed partial class LocalAssetResolver
 
     string? ResolveAddressablesCatalog(string requestPath)
     {
-        var normalized = Uri.UnescapeDataString(requestPath).Replace('\\', '/').TrimStart('/');
+        var decoded = RequestPath.Normalize(requestPath);
+        if (decoded is null) return null;
+        var normalized = decoded.TrimStart('/');
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var assetGroup = parts.FirstOrDefault(part =>
             part.Equals("2d-assets", StringComparison.OrdinalIgnoreCase) ||
@@ -193,7 +184,9 @@ sealed partial class LocalAssetResolver
 
     static IEnumerable<string> BuildPathCandidates(string requestPath)
     {
-        var normalized = Uri.UnescapeDataString(requestPath).Replace('\\', '/').TrimStart('/');
+        var decoded = RequestPath.Normalize(requestPath);
+        if (decoded is null) yield break;
+        var normalized = decoded.TrimStart('/');
         if (string.IsNullOrWhiteSpace(normalized)) yield break;
 
         yield return normalized;
@@ -215,9 +208,38 @@ sealed partial class LocalAssetResolver
 
     static string? SafeCombine(string root, string relativePath)
     {
-        var fullRoot = Path.GetFullPath(root);
+        if (relativePath.Contains('\0') || Path.IsPathRooted(relativePath)) return null;
+        // 根目录必须以分隔符结尾，否则 "Resources-evil" 也会通过 "Resources" 前缀检查。
+        var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) + Path.DirectorySeparatorChar;
         var fullPath = Path.GetFullPath(Path.Combine(fullRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase) ? fullPath : null;
+    }
+
+    // 按文件名全盘回退时禁止通配符，否则 "*" 会匹配任意文件。
+    static bool IsPlainFileName(string fileName) =>
+        !string.IsNullOrWhiteSpace(fileName) && fileName.IndexOfAny(['*', '?']) < 0 && fileName is not "." and not ".." &&
+        FallbackExtensions.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase);
+
+    // 只允许常见资源扩展名进入同名回退，避免把任意配置/日志文件也拍平暴露。
+    static readonly HashSet<string> FallbackExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".webp", ".astc", ".gz", ".br", ".bundle", ".json", ".bin", ".txt", ".bytes",
+        ".mp3", ".wav", ".acb", ".awb", ".ogg", ".mp4", ".usm", ".anim", ".mask", ".hash", ".dat", ".csv"
+    };
+
+    // 同名回退需要整树遍历，必须缓存结果（含未命中），否则每次 miss 都会扫全盘。
+    readonly ConcurrentDictionary<string, string?> fallbackCache = new(StringComparer.OrdinalIgnoreCase);
+    const int FallbackCacheLimit = 4096;
+
+    string? FindByFileName(string fileName)
+    {
+        if (!IsPlainFileName(fileName)) return null;
+        if (fallbackCache.TryGetValue(fileName, out var cached)) return cached;
+        var found = Directory.EnumerateFiles(config.ResourcesRoot, fileName, SearchOption.AllDirectories).FirstOrDefault()
+            ?? Directory.EnumerateFiles(config.AddressablesRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
+        // 缓存上限只是防止长时间运行的进程无限增长；超限后停止新增，未命中仍然返回 null。
+        if (fallbackCache.Count < FallbackCacheLimit) fallbackCache[fileName] = found;
+        return found;
     }
 
     static bool LooksLikeVersion(string value)

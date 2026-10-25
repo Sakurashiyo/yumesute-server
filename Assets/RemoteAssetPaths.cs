@@ -2,7 +2,8 @@ static class RemoteAssetPaths
 {
     public static string? Resolve(LocalConfig config, string requestPath, bool addressablesOnly = false)
     {
-        var parts = Uri.UnescapeDataString(requestPath).Replace('\\', '/')
+        if (RequestPath.Normalize(requestPath) is not { } decoded) return null;
+        var parts = decoded
             .Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0 || parts.Any(part => part is "." or ".." || part.Contains(':')))
             return null;
