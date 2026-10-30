@@ -2,7 +2,7 @@ static partial class ApiEndpointMappings
 {
     static void MapMissionPassEndpoints(WebApplication app, LocalServerState state)
     {
-        var group = app.MapGroup("/localap/api/Missions");
+        var group = app.MapGroup("/api/Missions");
         group.AddEndpointFilter(async (invocation, next) =>
         {
             try { return await next(invocation); }

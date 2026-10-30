@@ -2,7 +2,7 @@ static partial class ApiEndpointMappings
 {
     static void MapPermanentMarketEndpoint(WebApplication app,LocalServerState state,ApiCodec codec,LocalRequestLogger logger)
     {
-        app.MapPost("/localap/api/Shops/ExchangePermanentMarketThing/{permanentMarketThingMasterId:long}",async (HttpContext context,long permanentMarketThingMasterId) =>
+        app.MapPost("/api/Shops/ExchangePermanentMarketThing/{permanentMarketThingMasterId:long}",async (HttpContext context,long permanentMarketThingMasterId) =>
         {
             try
             {

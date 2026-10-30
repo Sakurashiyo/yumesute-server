@@ -13,18 +13,18 @@ static partial class ApiEndpointMappings
                 await codec.WriteApiErrorAsync(context, error.Message, error.StatusCode);
             }
         });
-        app.MapGet("/localap/api/Auditions/{auditionId:long}", async (HttpContext context, long auditionId) =>
+        app.MapGet("/api/Auditions/{auditionId:long}", async (HttpContext context, long auditionId) =>
         {
             var result = await state.UserDataService.GetAuditionInformationAsync(context, auditionId);
             await logger.LogAsync($"level=INFO operation=audition-information auditionId={auditionId} outcome=success");
             await codec.WriteApiResultAsync(context, result, "five-frame");
         });
-        app.MapGet("/localap/api/Auditions/{auditionId:long}/HighScoreParty", async (HttpContext context, long auditionId) =>
+        app.MapGet("/api/Auditions/{auditionId:long}/HighScoreParty", async (HttpContext context, long auditionId) =>
         {
             var result = await state.UserDataService.GetAuditionHighScorePartyAsync(context, auditionId);
             await codec.WriteApiResultAsync(context, result, "five-frame");
         });
-        app.MapPost("/localap/api/Auditions/{auditionId:long}/CopyTo/{uPartyId:long}",
+        app.MapPost("/api/Auditions/{auditionId:long}/CopyTo/{uPartyId:long}",
             async (HttpContext context, long auditionId, long uPartyId) =>
         {
             var result = await state.UserDataService.CopyAuditionClearPartyAsync(context, auditionId, uPartyId);

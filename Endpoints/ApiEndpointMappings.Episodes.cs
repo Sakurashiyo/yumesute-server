@@ -5,7 +5,7 @@ static partial class ApiEndpointMappings
         foreach (var route in new[] { "Read", "ReadAll", "ReadAsync", "ReadAllAsync" })
         {
             var hasReadAll = route is "ReadAll" or "ReadAllAsync";
-            app.MapPost($"/localap/api/Episodes/{{episodeMasterId:long}}/{route}", async (HttpContext context, long episodeMasterId) =>
+            app.MapPost($"/api/Episodes/{{episodeMasterId:long}}/{route}", async (HttpContext context, long episodeMasterId) =>
             {
                 try
                 {

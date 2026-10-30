@@ -3,21 +3,21 @@ static partial class ApiEndpointMappings
     static void MapCommerceMediaCircleEndpoints(WebApplication app, LocalServerState state, ApiCodec codec, LocalRequestLogger logger)
     {
         MapPermanentMarketEndpoint(app,state,codec,logger);
-        app.MapMethods("/localap/api/SerialCodes/UseSerialCode", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/SerialCodes/UseSerialCode", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"serial-codes-use payload={ValueFormatter.Format(body)}");
             await codec.WriteApiResultAsync(context, new object?[] { 3 });
         });
 
-        app.MapMethods("/localap/api/Photo/GetAlbumMainPage", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Photo/GetAlbumMainPage", new[] { "GET", "POST" }, async context =>
         {
             var targetUserId = context.Request.Query["targetUserId"].FirstOrDefault();
             await logger.LogAsync($"photo-get-album-main-page targetUserId={targetUserId}");
             await codec.WriteApiResultAsync(context, new object?[] { null, false });
         });
 
-        app.MapPost("/localap/api/Photo/AlbumSimpleArranging", async context =>
+        app.MapPost("/api/Photo/AlbumSimpleArranging", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"photo-album-simple-arranging payload={ValueFormatter.Format(body)}");
@@ -30,7 +30,7 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Photo/AlbumDetailArranging", async context =>
+        app.MapPost("/api/Photo/AlbumDetailArranging", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"photo-album-detail-arranging payload={ValueFormatter.Format(body)}");
@@ -43,7 +43,7 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Photos/GeneratePhoto", async context =>
+        app.MapPost("/api/Photos/GeneratePhoto", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var itemMasterId = ExtractFirstLong(body) ?? 510005L;
@@ -60,14 +60,14 @@ static partial class ApiEndpointMappings
                 "result-present-lz4-five-frame");
         });
 
-        app.MapMethods("/localap/api/Photos/FinishGeneratePhoto", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Photos/FinishGeneratePhoto", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"photos-finish-generate-photo payload={ValueFormatter.Format(body)}");
             await codec.WriteApiResultAsync(context, new object?[] { true }, "five-frame");
         });
 
-        app.MapMethods("/localap/api/Photo/WatchMusicVideo", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Photo/WatchMusicVideo", new[] { "GET", "POST" }, async context =>
         {
             var musicVideoId = ReadLongQuery(context, "mMusicVideoId") ?? 0L;
             await logger.LogAsync($"photo-watch-music-video musicVideoId={musicVideoId}");
@@ -80,7 +80,7 @@ static partial class ApiEndpointMappings
                 "photo-watch-music-video-five-frame");
         });
 
-        app.MapMethods("/localap/api/Posters/{posterId:long}/LevelUp/{levelTo:int}", new[] { "GET", "POST" }, async (HttpContext context, long posterId, int levelTo) =>
+        app.MapMethods("/api/Posters/{posterId:long}/LevelUp/{levelTo:int}", new[] { "GET", "POST" }, async (HttpContext context, long posterId, int levelTo) =>
         {
             try
             {
@@ -101,14 +101,14 @@ static partial class ApiEndpointMappings
             }
         });
 
-        app.MapMethods("/localap/api/Shops/ViewPage", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Shops/ViewPage", new[] { "GET", "POST" }, async context =>
         {
             var present = await state.UserDataService.GetShopPurchasePresentAsync(context);
             await codec.WriteApiFramesAsync(context, new object?[] { Array.Empty<object?>() }, present,
                 Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Shops/Purchase", async context =>
+        app.MapPost("/api/Shops/Purchase", async context =>
         {
             try
             {
@@ -126,7 +126,7 @@ static partial class ApiEndpointMappings
             }
         });
 
-        app.MapMethods("/localap/api/Shops/UpdateLastViewedAt", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Shops/UpdateLastViewedAt", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"shops-update-last-viewed-at payload={ValueFormatter.Format(body)}");
@@ -139,25 +139,25 @@ static partial class ApiEndpointMappings
                 "shops-update-last-viewed-at-five-frame");
         });
 
-        app.MapMethods("/localap/api/Shops/GetOrRefreshMarket", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Shops/GetOrRefreshMarket", new[] { "GET", "POST" }, async context =>
         {
             try { var response = await state.UserDataService.GetMarketAsync(context, false); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-get-or-refresh-market-five-frame"); }
             catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }
         });
 
-        app.MapMethods("/localap/api/Shops/RefreshMarketWithJewel", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Shops/RefreshMarketWithJewel", new[] { "GET", "POST" }, async context =>
         {
             try { var response = await state.UserDataService.GetMarketAsync(context, true); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-refresh-market-with-jewel-five-frame"); }
             catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }
         });
 
-        app.MapMethods("/localap/api/Shops/UpdateMarketWithJewel", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Shops/UpdateMarketWithJewel", new[] { "GET", "POST" }, async context =>
         {
             try { var response = await state.UserDataService.GetMarketAsync(context, true); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-refresh-market-with-jewel-five-frame"); }
             catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }
         });
 
-        app.MapMethods("/localap/api/Shops/ExchangeMarketThings", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Shops/ExchangeMarketThings", new[] { "GET", "POST" }, async context =>
         {
             try { var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null; var response = await state.UserDataService.ExchangeMarketThingsAsync(context, body); await codec.WriteApiFramesAsync(context, response.Result, response.Present, Array.Empty<object?>(), Array.Empty<object?>(), "shops-exchange-market-things-five-frame"); }
             catch (BadHttpRequestException error) { context.Response.StatusCode=error.StatusCode; await codec.WriteApiFramesAsync(context, Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), Array.Empty<object?>(), "five-frame"); }

@@ -17,19 +17,19 @@ static partial class ApiEndpointMappings
             await codec.WriteApiFramesAsync(context, new object?[] { true }, present, Array.Empty<object?>(), Array.Empty<object?>());
         }
 
-        app.MapPost("/localap/api/Lessons/{characterBaseMasterId:long}/CreateParty", (HttpContext context, long characterBaseMasterId) =>
+        app.MapPost("/api/Lessons/{characterBaseMasterId:long}/CreateParty", (HttpContext context, long characterBaseMasterId) =>
             WriteLessonResult(context, "lessons-create-party", () => state.UserDataService.CreateLessonPartyAsync(context, characterBaseMasterId)));
 
-        app.MapPost("/localap/api/Lessons/{characterBaseMasterId:long}/SetParty", async (HttpContext context, long characterBaseMasterId) =>
+        app.MapPost("/api/Lessons/{characterBaseMasterId:long}/SetParty", async (HttpContext context, long characterBaseMasterId) =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await WriteLessonResult(context, "lessons-set-party", () => state.UserDataService.SetLessonPartyAsync(context, characterBaseMasterId, body));
         });
 
-        app.MapPost("/localap/api/Lessons/{characterBaseMasterId:long}/SetPartyLeader/{leaderPosition:int}", (HttpContext context, long characterBaseMasterId, int leaderPosition) =>
+        app.MapPost("/api/Lessons/{characterBaseMasterId:long}/SetPartyLeader/{leaderPosition:int}", (HttpContext context, long characterBaseMasterId, int leaderPosition) =>
             WriteLessonResult(context, "lessons-set-party-leader", () => state.UserDataService.SetLessonPartyLeaderAsync(context, characterBaseMasterId, leaderPosition)));
 
-        app.MapPost("/localap/api/Lessons/{characterBaseMasterId:long}/Start/{liveMasterId:long}", async (HttpContext context, long characterBaseMasterId, long liveMasterId) =>
+        app.MapPost("/api/Lessons/{characterBaseMasterId:long}/Start/{liveMasterId:long}", async (HttpContext context, long characterBaseMasterId, long liveMasterId) =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await WriteLessonResult(context, "lessons-start", () => state.UserDataService.StartLessonAsync(context, characterBaseMasterId, liveMasterId, body));
@@ -40,6 +40,6 @@ static partial class ApiEndpointMappings
             var body = await codec.ReadRequestBodyAsync(context);
             await WriteLessonResult(context, "lessons-finish", () => state.UserDataService.FinishLessonAsync(context, body));
         }
-        app.MapPost("/localap/api/Lessons/Finish", FinishLesson);
+        app.MapPost("/api/Lessons/Finish", FinishLesson);
     }
 }

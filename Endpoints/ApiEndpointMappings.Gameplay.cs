@@ -6,7 +6,7 @@ static partial class ApiEndpointMappings
         {
             try { await next(); }
             catch (BadHttpRequestException error) when (!context.Response.HasStarted
-                && context.Request.Path.StartsWithSegments("/localap/api/Lives")
+                && context.Request.Path.StartsWithSegments("/api/Lives")
                 && error.Message is LiveProgressionErrors.InvalidStart or LiveProgressionErrors.InvalidFinish
                     or LiveProgressionErrors.InvalidJudges or LiveProgressionErrors.SessionMissing
                     or LiveProgressionErrors.SessionConflict or LiveProgressionErrors.GhostUnavailable)
@@ -21,7 +21,7 @@ static partial class ApiEndpointMappings
                 await codec.WriteApiErrorAsync(context, error.Message, error.StatusCode);
             }
             catch (BadHttpRequestException error) when (!context.Response.HasStarted
-                && context.Request.Path.StartsWithSegments("/localap/api/Parties")
+                && context.Request.Path.StartsWithSegments("/api/Parties")
                 && error.Message is UserDataService.PartyInvalid or UserDataService.PartyNotFound or UserDataService.PartyMemberInvalid)
             {
                 await logger.LogAsync($"level=WARN operation=party path={context.Request.Path} requestId={context.TraceIdentifier} errorCode={error.Message} outcome=failed");
@@ -29,21 +29,21 @@ static partial class ApiEndpointMappings
             }
         });
         MapLessonEndpoints(app, state, codec, logger);
-        app.MapMethods("/localap/api/Lives/UpdateClearLamps/{multiLiveId:long}", new[] { "GET", "POST" }, async (HttpContext context, long multiLiveId) =>
+        app.MapMethods("/api/Lives/UpdateClearLamps/{multiLiveId:long}", new[] { "GET", "POST" }, async (HttpContext context, long multiLiveId) =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-update-clear-lamps multiLiveId={multiLiveId} query={context.Request.QueryString} payload={ValueFormatter.Format(body)}");
             await codec.WriteApiResultAsync(context, new object?[] { 0 });
         });
 
-        app.MapMethods("/localap/api/Lives/UpdateClearLamp/{multiLiveId:long}", new[] { "GET", "POST" }, async (HttpContext context, long multiLiveId) =>
+        app.MapMethods("/api/Lives/UpdateClearLamp/{multiLiveId:long}", new[] { "GET", "POST" }, async (HttpContext context, long multiLiveId) =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-update-clear-lamp multiLiveId={multiLiveId} query={context.Request.QueryString} payload={ValueFormatter.Format(body)}");
             await codec.WriteApiResultAsync(context, new object?[] { 0 });
         });
 
-        app.MapGet("/localap/api/Lives/GetMultiLiveInformation/{multiLiveId:long}", async (HttpContext context, long multiLiveId) =>
+        app.MapGet("/api/Lives/GetMultiLiveInformation/{multiLiveId:long}", async (HttpContext context, long multiLiveId) =>
         {
             await logger.LogAsync($"lives-get-multi-live-information multiLiveId={multiLiveId} query={context.Request.QueryString}");
             var identity = await state.UserDataService.GetLiveIdentityAsync(context);
@@ -57,7 +57,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/MatchingGhostLive", async context =>
+        app.MapPost("/api/Lives/MatchingGhostLive", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-matching-ghost-live payload={ValueFormatter.Format(body)}");
@@ -70,7 +70,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/Start", async context =>
+        app.MapPost("/api/Lives/Start", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start payload={ValueFormatter.Format(body)}");
@@ -84,7 +84,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/StartGhostLive", async context =>
+        app.MapPost("/api/Lives/StartGhostLive", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-ghost-live payload={ValueFormatter.Format(body)}");
@@ -99,7 +99,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/StartMultiLive", async context =>
+        app.MapPost("/api/Lives/StartMultiLive", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-multi-live payload={ValueFormatter.Format(body)}");
@@ -115,7 +115,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapMethods("/localap/api/Lives/StartMusicCourseLive", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Lives/StartMusicCourseLive", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-start-music-course-live payload={ValueFormatter.Format(body)}");
@@ -129,7 +129,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/StartTripleCastLive", async context =>
+        app.MapPost("/api/Lives/StartTripleCastLive", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-start-triple-cast-live payload={ValueFormatter.Format(body)}");
@@ -145,7 +145,7 @@ static partial class ApiEndpointMappings
                 "result-present-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/Music/EditBookmark", async context =>
+        app.MapPost("/api/Lives/Music/EditBookmark", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-music-edit-bookmark payload={ValueFormatter.Format(body)}");
@@ -157,7 +157,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>());
         });
 
-        app.MapMethods("/localap/api/Lives/StartTrialPartyEventStage", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Lives/StartTrialPartyEventStage", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"lives-start-trial-party-event-stage payload={ValueFormatter.Format(body)}");
@@ -171,7 +171,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/StartLesson", async context =>
+        app.MapPost("/api/Lives/StartLesson", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var lesson = await state.UserDataService.StartLessonLiveAsync(context, body);
@@ -185,7 +185,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapMethods("/localap/api/Lives/Retire", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Lives/Retire", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await state.UserDataService.RetireLiveAsync(context);
@@ -199,7 +199,7 @@ static partial class ApiEndpointMappings
                 "lives-retire-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/FinishAndValidate", async context =>
+        app.MapPost("/api/Lives/FinishAndValidate", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"lives-finish-and-validate payload={ValueFormatter.Format(body)}");
@@ -213,7 +213,7 @@ static partial class ApiEndpointMappings
                 "result-present-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Lives/FinishAnotherNotationLive", async context =>
+        app.MapPost("/api/Lives/FinishAnotherNotationLive", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var settlement = await state.UserDataService.FinishAnotherNotationAsync(context, body);
@@ -221,7 +221,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), Array.Empty<object?>(), "result-present-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Items/UseStaminaRecoveryItems", async context =>
+        app.MapPost("/api/Items/UseStaminaRecoveryItems", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"items-use-stamina-recovery-items payload={ValueFormatter.Format(body)}");
@@ -234,14 +234,14 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/CharacterBases/{characterBaseMasterId:long}/SetCostume/{costumeMasterId:long}", async (HttpContext context, long characterBaseMasterId, long costumeMasterId) =>
+        app.MapPost("/api/CharacterBases/{characterBaseMasterId:long}/SetCostume/{costumeMasterId:long}", async (HttpContext context, long characterBaseMasterId, long costumeMasterId) =>
         {
             await logger.LogAsync($"character-bases-set-costume characterBaseMasterId={characterBaseMasterId} costumeMasterId={costumeMasterId}");
             var present = await state.UserDataService.SetCostumeAsync(context, characterBaseMasterId, costumeMasterId);
             await codec.WriteApiFramesAsync(context, new object?[] { true }, present, Array.Empty<object?>(), Array.Empty<object?>());
         });
 
-        app.MapPost("/localap/api/Characters/SetFavorite", async (HttpContext context) =>
+        app.MapPost("/api/Characters/SetFavorite", async (HttpContext context) =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var present = await state.UserDataService.SetCharacterFavoriteAsync(context, body);
@@ -249,14 +249,14 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Characters/SetPortalMCharacter", async (HttpContext context) =>
+        app.MapPost("/api/Characters/SetPortalMCharacter", async (HttpContext context) =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var present = await state.UserDataService.SetPortalCharacterAsync(context, body);
             await codec.WriteApiFramesAsync(context, new object?[] { true }, present, Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Characters/{characterId:long}/AddExperience", async (HttpContext context, long characterId) =>
+        app.MapPost("/api/Characters/{characterId:long}/AddExperience", async (HttpContext context, long characterId) =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"characters-add-experience characterId={characterId} payload={ValueFormatter.Format(body)}");
@@ -270,21 +270,21 @@ static partial class ApiEndpointMappings
                 "characters-add-experience-present-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Characters/{characterId:long}/Awaken", async (HttpContext context, long characterId) =>
+        app.MapPost("/api/Characters/{characterId:long}/Awaken", async (HttpContext context, long characterId) =>
         {
             var present = await state.UserDataService.AwakenCharacterAsync(context, characterId);
             await codec.WriteApiFramesAsync(context, new object?[] { true }, present,
                 Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Characters/{characterId:long}/SwitchCharacterDisplayAwakeningStatusAsync", async (HttpContext context, long characterId) =>
+        app.MapPost("/api/Characters/{characterId:long}/SwitchCharacterDisplayAwakeningStatusAsync", async (HttpContext context, long characterId) =>
         {
             var present = await state.UserDataService.SwitchCharacterDisplayAwakeningStatusAsync(context, characterId);
             await codec.WriteApiFramesAsync(context, new object?[] { true }, present,
                 Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Characters/{characterId:long}/EnhanceSenseLevel/{senseLevel:int}", async (HttpContext context, long characterId, int senseLevel) =>
+        app.MapPost("/api/Characters/{characterId:long}/EnhanceSenseLevel/{senseLevel:int}", async (HttpContext context, long characterId, int senseLevel) =>
         {
             var priority = 1;
             if (context.Request.Query.ContainsKey("priority") && !int.TryParse(context.Request.Query["priority"], out priority))
@@ -294,7 +294,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Characters/{characterMasterId:long}/ReleaseSideStory", async (HttpContext context, long characterMasterId) =>
+        app.MapPost("/api/Characters/{characterMasterId:long}/ReleaseSideStory", async (HttpContext context, long characterMasterId) =>
         {
             var order = ReadIntQuery(context, "order") ?? 1;
             await logger.LogAsync($"characters-release-side-story characterMasterId={characterMasterId} order={order} query={context.Request.QueryString}");
@@ -306,7 +306,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>());
         });
 
-        app.MapPost("/localap/api/Characters/BulkLevelUp", async context =>
+        app.MapPost("/api/Characters/BulkLevelUp", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"characters-bulk-level-up payload={ValueFormatter.Format(body)}");
@@ -319,14 +319,14 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/CharacterMissions/{characterBaseMasterId:long}/receiveAllMission", async (HttpContext context, long characterBaseMasterId) =>
+        app.MapPost("/api/CharacterMissions/{characterBaseMasterId:long}/receiveAllMission", async (HttpContext context, long characterBaseMasterId) =>
         {
             await logger.LogAsync($"character-missions-receive-all characterBaseMasterId={characterBaseMasterId} query={context.Request.QueryString}");
             var received = await state.UserDataService.ReceiveCharacterMissionsAsync(context, new[] { characterBaseMasterId }, false);
             await codec.WriteApiFramesAsync(context,received.Result,received.Present,Array.Empty<object?>(),Array.Empty<object?>(),"present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapMethods("/localap/api/CharacterMissions/BulkReceiveAllMission", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/CharacterMissions/BulkReceiveAllMission", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
             await logger.LogAsync($"character-missions-bulk-receive-all payload={ValueFormatter.Format(body)}");
@@ -335,20 +335,20 @@ static partial class ApiEndpointMappings
             var received = await state.UserDataService.ReceiveCharacterMissionsAsync(context, ids.Select(Convert.ToInt64).ToArray(), true);
             await codec.WriteApiFramesAsync(context,received.Result,received.Present,Array.Empty<object?>(),Array.Empty<object?>(),"present-lz4-when-not-empty-five-frame");
         });
-        app.MapPost("/localap/api/CharacterMissions/{characterBaseMasterId:long}/receiveKeyMission", async (HttpContext context,long characterBaseMasterId) =>
+        app.MapPost("/api/CharacterMissions/{characterBaseMasterId:long}/receiveKeyMission", async (HttpContext context,long characterBaseMasterId) =>
         {
             var received = await state.UserDataService.ReceiveCharacterMissionsAsync(context,new[] {characterBaseMasterId},false,true);
             await codec.WriteApiFramesAsync(context,received.Result,received.Present,Array.Empty<object?>(),Array.Empty<object?>(),"present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Comics/Read/{comicEpisodeId:long}", async (HttpContext context, long comicEpisodeId) =>
+        app.MapPost("/api/Comics/Read/{comicEpisodeId:long}", async (HttpContext context, long comicEpisodeId) =>
         {
             await logger.LogAsync($"comics-read comicEpisodeId={comicEpisodeId} query={context.Request.QueryString}");
             var rewards = await state.UserDataService.ReadComicAsync(context, comicEpisodeId);
             await codec.WriteApiResultAsync(context, rewards);
         });
 
-        app.MapPost("/localap/api/Missions/receiveRewards", async context =>
+        app.MapPost("/api/Missions/receiveRewards", async context =>
         {
             var missionCategory = ReadIntQuery(context, "missionCategory");
             await logger.LogAsync($"missions-receive-rewards missionCategory={missionCategory} query={context.Request.QueryString}");
@@ -361,7 +361,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Missions/{missionId:long}/receiveCurrentRewards", async (HttpContext context, long missionId) =>
+        app.MapPost("/api/Missions/{missionId:long}/receiveCurrentRewards", async (HttpContext context, long missionId) =>
         {
             await logger.LogAsync($"missions-receive-current-rewards missionId={missionId} query={context.Request.QueryString}");
             var claim = await state.UserDataService.ReceiveMissionRewardsAsync(context, missionId, null);
@@ -375,7 +375,7 @@ static partial class ApiEndpointMappings
 
         MapMissionPassEndpoints(app, state);
 
-        app.MapGet("/localap/api/MultiRooms", async context =>
+        app.MapGet("/api/MultiRooms", async context =>
         {
             await logger.LogAsync($"multi-rooms query={context.Request.QueryString}");
             await codec.WriteApiFramesAsync(
@@ -387,7 +387,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/MultiRooms/Detail", async context =>
+        app.MapPost("/api/MultiRooms/Detail", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"multi-rooms-detail payload={ValueFormatter.Format(body)}");
@@ -400,7 +400,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/MultiRooms/Joined", async context =>
+        app.MapPost("/api/MultiRooms/Joined", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"multi-rooms-joined payload={ValueFormatter.Format(body)}");
@@ -412,7 +412,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>());
         });
 
-        app.MapPost("/localap/api/MultiRooms/Invited", async context =>
+        app.MapPost("/api/MultiRooms/Invited", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"multi-rooms-invited payload={ValueFormatter.Format(body)}");
@@ -424,7 +424,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>());
         });
 
-        app.MapPost("/localap/api/Parties/{srcOrder:int}/CopyTo/{destOrder:int}", async (HttpContext context, int srcOrder, int destOrder) =>
+        app.MapPost("/api/Parties/{srcOrder:int}/CopyTo/{destOrder:int}", async (HttpContext context, int srcOrder, int destOrder) =>
         {
             // 客户端同时在路径和查询中传顺序；重复参数必须一致，避免复制错队。
             foreach (var (key, expected) in new[] { ("srcOrder", srcOrder), ("destOrder", destOrder) })
@@ -438,7 +438,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Parties/{partyId:long}/EditParty", async (HttpContext context, long partyId) =>
+        app.MapPost("/api/Parties/{partyId:long}/EditParty", async (HttpContext context, long partyId) =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var present = await state.UserDataService.EditPartyAsync(context, partyId, body);
@@ -452,7 +452,7 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Parties/{partyId:long}/EditPartyWithRecommended", async (HttpContext context, long partyId) =>
+        app.MapPost("/api/Parties/{partyId:long}/EditPartyWithRecommended", async (HttpContext context, long partyId) =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var present = await state.UserDataService.EditPartyAsync(context, partyId, body);

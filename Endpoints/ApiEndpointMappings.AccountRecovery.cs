@@ -3,14 +3,14 @@ static partial class ApiEndpointMappings
     static void MapAccountRecoveryEndpoints(WebApplication app, LocalServerState state)
     {
         var codec = state.Codec;
-        app.MapMethods("/localap/api/Account/GetConfirmationCode", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Account/GetConfirmationCode", new[] { "GET", "POST" }, async context =>
         {
             var result = await state.AccountService.GetConfirmationCodeAsync(PayloadReaders.ReadApiToken(context));
             await state.Logger.LogAsync($"level=INFO operation=account-confirmation-issue requestId={context.TraceIdentifier} outcome=success");
             await codec.WriteApiResultAsync(context, result, "five-frame");
         });
         // 本地验证入口
-        app.MapPost("/localap/api/Account/VerifyConfirmationCode", async context =>
+        app.MapPost("/api/Account/VerifyConfirmationCode", async context =>
         {
             var payload = await AccountRecoveryPayloads.ReadAsync(context, codec, "ConfirmationCode");
             await state.AccountService.VerifyConfirmationCodeAsync(PayloadReaders.ReadApiToken(context), payload[0]);
@@ -18,7 +18,7 @@ static partial class ApiEndpointMappings
             await codec.WriteApiResultAsync(context, new object?[] { true }, "five-frame");
         });
         // 引继码只创建一次；已使用过的账号不再设置引继密码，按客户端契约回 false 而不是错误页。
-        app.MapMethods("/localap/api/Account/RegisterTakeOverPassword", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Account/RegisterTakeOverPassword", new[] { "GET", "POST" }, async context =>
         {
             var payload = await AccountRecoveryPayloads.ReadAsync(context, codec, "Password");
             (long UserId, string LinkageCode) registered;
@@ -37,7 +37,7 @@ static partial class ApiEndpointMappings
             await codec.WriteApiFramesAsync(context, new object?[] { true, registered.LinkageCode },
                 new object?[] { new object?[] { 120, new object?[] { registered.UserId } } }, Array.Empty<object?>(), Array.Empty<object?>());
         });
-        app.MapPost("/localap/api/Account/GetTakeOverAccount", async context =>
+        app.MapPost("/api/Account/GetTakeOverAccount", async context =>
         {
             var payload = await AccountRecoveryPayloads.ReadAsync(context, codec, "LinkageCode", "Password");
             object?[] result;

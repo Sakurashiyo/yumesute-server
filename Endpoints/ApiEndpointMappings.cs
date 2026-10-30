@@ -8,20 +8,20 @@ static partial class ApiEndpointMappings
 
         app.MapGet("/health", () => Results.Json(new { ok = true }));
 
-        app.MapMethods("/localap/api/Environment", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Environment", new[] { "GET", "POST" }, async context =>
         {
             await codec.WriteApiResultAsync(context, GameResults.Environment(config), "lz4-five-frame");
         });
-        app.MapMethods("/localap/api/Environment/GetEnvironment", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Environment/GetEnvironment", new[] { "GET", "POST" }, async context =>
         {
             await codec.WriteApiResultAsync(context, GameResults.Environment(config), "lz4-five-frame");
         });
-        app.MapMethods("/localap/api/Environment/Ping", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Environment/Ping", new[] { "GET", "POST" }, async context =>
         {
             await codec.WriteApiResultAsync(context, new object[] { true });
         });
 
-        app.MapPost("/localap/api/Account/Register", async context =>
+        app.MapPost("/api/Account/Register", async context =>
         {
             // 匿名注册每次都签发五年令牌并插入整套默认数据，必须按来源限流。
             RequestGuard.GuardRegistration(context);
@@ -34,7 +34,7 @@ static partial class ApiEndpointMappings
 
         MapAccountAuthenticationEndpoints(app, state);
 
-        app.MapPost("/localap/api/Account/GetPushNotificationToken", async context =>
+        app.MapPost("/api/Account/GetPushNotificationToken", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var pushToken = await state.UserDataService.GetCurrentUserPushTokenAsync(context);
@@ -44,13 +44,13 @@ static partial class ApiEndpointMappings
 
         MapAccountRecoveryEndpoints(app,state);
 
-        app.MapMethods("/localap/api/Account/GetCurrentUserData", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Account/GetCurrentUserData", new[] { "GET", "POST" }, async context =>
         {
             await logger.LogAsync("account-get-current-user-data");
             await codec.WriteApiResultAsync(context, await state.UserDataService.GetCurrentUserResultAsync(context));
         });
 
-        app.MapMethods("/localap/api/Account/UpdateBirthDate", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Account/UpdateBirthDate", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var presentData = await state.UserDataService.UpdateBirthDateAsync(context, body);
@@ -62,7 +62,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapMethods("/localap/api/Account/UpdateBirthDateAsync", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Account/UpdateBirthDateAsync", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             var presentData = await state.UserDataService.UpdateBirthDateAsync(context, body);
@@ -74,7 +74,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>(), "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Login/Login", async context =>
+        app.MapPost("/api/Login/Login", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"login payload={ValueFormatter.Format(body)}");
@@ -82,7 +82,7 @@ static partial class ApiEndpointMappings
             await codec.WriteApiFramesAsync(context, GameResults.EmptyLogin(), presentData, Array.Empty<object?>(), Array.Empty<object?>(), "login-official-five-frame");
         });
 
-        app.MapPost("/localap/api/Login", async context =>
+        app.MapPost("/api/Login", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"login-short payload={ValueFormatter.Format(body)}");
@@ -90,20 +90,20 @@ static partial class ApiEndpointMappings
             await codec.WriteApiFramesAsync(context, GameResults.EmptyLogin(), presentData, Array.Empty<object?>(), Array.Empty<object?>(), "login-official-five-frame");
         });
 
-        app.MapPost("/localap/api/Data/GetUserData", async context =>
+        app.MapPost("/api/Data/GetUserData", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"get-user-data payload={ValueFormatter.Format(body)}");
             await codec.WriteApiResultAsync(context, await state.UserDataService.GetUserDataAsync(context), "lz4-five-frame");
         });
 
-        app.MapMethods("/localap/api/data/user", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/data/user", new[] { "GET", "POST" }, async context =>
         {
             await logger.LogAsync("data-user");
             await codec.WriteApiResultAsync(context, await state.UserDataService.GetUserDataAsync(context), "lz4-five-frame");
         });
 
-        app.MapMethods("/localap/api/Profiles/Edit", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Profiles/Edit", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"profile-edit payload={ValueFormatter.Format(body)}");
@@ -117,7 +117,7 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapMethods("/localap/api/Profile/Edit", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Profile/Edit", new[] { "GET", "POST" }, async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
             await logger.LogAsync($"profile-edit-short payload={ValueFormatter.Format(body)}");
@@ -131,38 +131,38 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapMethods("/localap/api/Profiles/GetCurrent", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/Profiles/GetCurrent", new[] { "GET", "POST" }, async context =>
         {
             await logger.LogAsync("profiles-get-current");
             await codec.WriteApiResultAsync(context, await state.UserDataService.GetCurrentUserProfileDetailAsync(context));
         });
 
-        app.MapPost("/localap/api/Data/GetMasterData", async context =>
+        app.MapPost("/api/Data/GetMasterData", async context =>
         {
             var masterData = await state.MasterDataService.GetActiveAsync();
             await codec.WriteApiResultAsync(context, GameResults.MasterDataManifest(masterData), "lz4-five-frame");
         });
 
-        app.MapMethods("/localap/api/data/master", new[] { "GET", "POST" }, async context =>
+        app.MapMethods("/api/data/master", new[] { "GET", "POST" }, async context =>
         {
             await logger.LogAsync("data-master manifest");
             var masterData = await state.MasterDataService.GetActiveAsync();
             await codec.WriteApiResultAsync(context, GameResults.MasterDataManifest(masterData), "lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Episodes/{episodeMasterId:long}/GetDetails", async (HttpContext context, long episodeMasterId) =>
+        app.MapPost("/api/Episodes/{episodeMasterId:long}/GetDetails", async (HttpContext context, long episodeMasterId) =>
         {
             await logger.LogAsync($"episodes-get-details episodeMasterId={episodeMasterId} query={context.Request.QueryString}");
             await codec.WriteApiResultAsync(context, TutorialEpisodeResults.Summary(episodeMasterId), "lz4-five-frame");
         });
 
-        app.MapPost("/localap/api/Episodes/{episodeMasterId:long}/GetDetailsAsync", async (HttpContext context, long episodeMasterId) =>
+        app.MapPost("/api/Episodes/{episodeMasterId:long}/GetDetailsAsync", async (HttpContext context, long episodeMasterId) =>
         {
             await logger.LogAsync($"episodes-get-details-async episodeMasterId={episodeMasterId} query={context.Request.QueryString}");
             await codec.WriteApiResultAsync(context, TutorialEpisodeResults.Summary(episodeMasterId), "lz4-five-frame");
         });
 
-        app.MapMethods("/localap/api/Episodes/{episodeMasterId:long}/DetailAssetSource", new[] { "GET", "POST" }, async (HttpContext context, long episodeMasterId) =>
+        app.MapMethods("/api/Episodes/{episodeMasterId:long}/DetailAssetSource", new[] { "GET", "POST" }, async (HttpContext context, long episodeMasterId) =>
         {
             codec.SetCommonHeaders(context);
             context.Response.ContentType = "application/vnd.msgpack";
@@ -177,7 +177,7 @@ static partial class ApiEndpointMappings
 
         MapHomePlayerEventEndpoints(app, state, codec, logger);
 
-        app.MapPost("/localap/api/Events/DugongRun/{dugongRunCourseMasterId:long}/Clear/{clearResult}", async (HttpContext context, long dugongRunCourseMasterId, string clearResult) =>
+        app.MapPost("/api/Events/DugongRun/{dugongRunCourseMasterId:long}/Clear/{clearResult}", async (HttpContext context, long dugongRunCourseMasterId, string clearResult) =>
         {
             var clearType = ReadIntQuery(context, "clearType")
                             ?? clearResult.ToLowerInvariant() switch

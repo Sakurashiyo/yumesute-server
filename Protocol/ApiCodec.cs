@@ -13,7 +13,6 @@ sealed class ApiCodec
 
     static bool IsPrivateRequest(HttpContext context) =>
         context.Request.Path.Value?.Contains("UpdateBirthDate", StringComparison.OrdinalIgnoreCase) == true
-        || context.Request.Path.StartsWithSegments("/localap/api/Account")
         || context.Request.Path.StartsWithSegments("/api/Account");
 
     public async Task<object?> ReadRequestBodyAsync(HttpContext context)
@@ -47,7 +46,16 @@ sealed class ApiCodec
             return json;
         }
 
-        var decoded = MagicOnionLz4.Unwrap(MsgPack.Decode(bytes));
+        object? decoded;
+        try
+        {
+            decoded = MagicOnionLz4.Unwrap(MsgPack.Decode(bytes));
+        }
+        catch (InvalidDataException error)
+        {
+            // 非法外部消息在解码边界转换为客户端错误。
+            throw new BadHttpRequestException("MessagePack 请求格式非法", StatusCodes.Status400BadRequest, error);
+        }
         if (!IsPrivateRequest(context)) await logger.LogAsync($"body decoded path={context.Request.Path} value={ValueFormatter.Format(decoded)}");
         return decoded;
     }

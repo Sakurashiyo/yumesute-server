@@ -18,7 +18,7 @@ static partial class ApiEndpointMappings
             }
         });
 
-        foreach (var path in new[] { "/localap/api/Account/Authenticate", "/localap/api/Account/AuthenticateAndSetApiToken" })
+        foreach (var path in new[] { "/api/Account/Authenticate", "/api/Account/AuthenticateAndSetApiToken" })
         {
             app.MapPost(path, async context =>
             {

@@ -4,7 +4,7 @@ static partial class ApiEndpointMappings
     {
         MapAuditionEndpoints(app, state, codec, logger);
 
-        app.MapGet("/localap/api/Leagues", async context =>
+        app.MapGet("/api/Leagues", async context =>
         {
             await logger.LogAsync("leagues-list");
             await codec.WriteApiFramesAsync(
@@ -15,7 +15,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>());
         });
 
-        app.MapPost("/localap/api/Leagues/TopMenuInformation", async context =>
+        app.MapPost("/api/Leagues/TopMenuInformation", async context =>
         {
             await logger.LogAsync("leagues-top-menu-information");
             await codec.WriteApiFramesAsync(
@@ -27,7 +27,7 @@ static partial class ApiEndpointMappings
                 "present-lz4-when-not-empty-five-frame");
         });
 
-        app.MapPost("/localap/api/Leagues/GroupRanking/{leagueMasterId:long}/{leagueGroupId:long}", async (HttpContext context, long leagueMasterId, long leagueGroupId) =>
+        app.MapPost("/api/Leagues/GroupRanking/{leagueMasterId:long}/{leagueGroupId:long}", async (HttpContext context, long leagueMasterId, long leagueGroupId) =>
         {
             await logger.LogAsync($"leagues-group-ranking leagueMasterId={leagueMasterId} leagueGroupId={leagueGroupId} query={context.Request.QueryString}");
             await codec.WriteApiFramesAsync(
@@ -39,7 +39,7 @@ static partial class ApiEndpointMappings
                 "result-lz4-five-frame");
         });
 
-        app.MapGet("/localap/api/TripleCast", async context =>
+        app.MapGet("/api/TripleCast", async context =>
         {
             await logger.LogAsync("triple-cast-list");
             await codec.WriteApiFramesAsync(
@@ -50,7 +50,7 @@ static partial class ApiEndpointMappings
                 Array.Empty<object?>());
         });
 
-        app.MapPost("/localap/api/TripleCast/TopMenuInformation", async context =>
+        app.MapPost("/api/TripleCast/TopMenuInformation", async context =>
         {
             await logger.LogAsync("triple-cast-top-menu-information");
             await codec.WriteApiFramesAsync(

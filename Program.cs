@@ -45,16 +45,6 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     KnownIPNetworks = { },
     KnownProxies = { }
 });
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path.StartsWithSegments("/api", out var remaining))
-    {
-        context.Request.Path = "/localap/api" + remaining;
-    }
-
-    await next();
-});
-
 app.UseRouting();
 app.UseRequestLogging(state.Logger);
 app.MapApiEndpoints(state);

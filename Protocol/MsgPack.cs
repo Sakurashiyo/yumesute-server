@@ -305,16 +305,17 @@ static class MsgPack
         stream.Write(bytes);
     }
 
-    static object? Read(byte[] bytes, ref int offset)
+    static object? Read(byte[] bytes, ref int offset, int depth = 0)
     {
+        if (depth > 64) throw new InvalidDataException("MessagePack 嵌套深度超限");
         if (offset >= bytes.Length) return null;
 
         var marker = bytes[offset++];
         if (marker <= 0x7f) return marker;
         if (marker >= 0xe0) return unchecked((sbyte)marker);
         if ((marker & 0xe0) == 0xa0) return ReadString(bytes, ref offset, marker & 0x1f);
-        if ((marker & 0xf0) == 0x90) return ReadArray(bytes, ref offset, marker & 0x0f);
-        if ((marker & 0xf0) == 0x80) return ReadMap(bytes, ref offset, marker & 0x0f);
+        if ((marker & 0xf0) == 0x90) return ReadArray(bytes, ref offset, marker & 0x0f, depth);
+        if ((marker & 0xf0) == 0x80) return ReadMap(bytes, ref offset, marker & 0x0f, depth);
 
         return marker switch
         {
@@ -345,10 +346,10 @@ static class MsgPack
             0xc7 => ReadExt(bytes, ref offset, ReadByte(bytes, ref offset)),
             0xc8 => ReadExt(bytes, ref offset, ReadUInt16(bytes, ref offset)),
             0xc9 => ReadExt(bytes, ref offset, checked((int)ReadUInt32(bytes, ref offset))),
-            0xdc => ReadArray(bytes, ref offset, ReadUInt16(bytes, ref offset)),
-            0xdd => ReadArray(bytes, ref offset, checked((int)ReadUInt32(bytes, ref offset))),
-            0xde => ReadMap(bytes, ref offset, ReadUInt16(bytes, ref offset)),
-            0xdf => ReadMap(bytes, ref offset, checked((int)ReadUInt32(bytes, ref offset))),
+            0xdc => ReadArray(bytes, ref offset, ReadUInt16(bytes, ref offset), depth),
+            0xdd => ReadArray(bytes, ref offset, checked((int)ReadUInt32(bytes, ref offset)), depth),
+            0xde => ReadMap(bytes, ref offset, ReadUInt16(bytes, ref offset), depth),
+            0xdf => ReadMap(bytes, ref offset, checked((int)ReadUInt32(bytes, ref offset)), depth),
             _ => throw new InvalidDataException($"不支持的 MessagePack 标记：{marker:x2}")
         };
     }
@@ -405,32 +406,32 @@ static class MsgPack
         }
     }
 
-    static object?[] ReadArray(byte[] bytes, ref int offset, int count)
+    static object?[] ReadArray(byte[] bytes, ref int offset, int count, int depth)
     {
         if (count < 0 || count > bytes.Length - offset) throw new InvalidDataException("MessagePack 数组数据不完整");
         var result = new object?[count];
         for (var i = 0; i < count; i++)
         {
             if (offset >= bytes.Length) break;
-            result[i] = Read(bytes, ref offset);
+            result[i] = Read(bytes, ref offset, depth + 1);
         }
         return result;
     }
 
-    static Dictionary<string, object?> ReadMap(byte[] bytes, ref int offset, int count)
+    static Dictionary<string, object?> ReadMap(byte[] bytes, ref int offset, int count, int depth)
     {
         if (count < 0 || count > (bytes.Length - offset) / 2) throw new InvalidDataException("MessagePack 字典数据不完整");
         var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < count; i++)
         {
             if (offset >= bytes.Length) break;
-            var key = Read(bytes, ref offset)?.ToString() ?? "";
+            var key = Read(bytes, ref offset, depth + 1)?.ToString() ?? "";
             if (offset >= bytes.Length)
             {
                 result[key] = null;
                 break;
             }
-            result[key] = Read(bytes, ref offset);
+            result[key] = Read(bytes, ref offset, depth + 1);
         }
         return result;
     }

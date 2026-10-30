@@ -21,11 +21,11 @@ static partial class ApiEndpointMappings
                 await codec.WriteApiFramesAsync(context,new object?[]{false},Array.Empty<object?>(),Array.Empty<object?>(),Array.Empty<object?>(),"five-frame");
             }
         }
-        app.MapMethods("/localap/api/Shops/ExchangeMusic/{musicMasterId:long}",new[]{"GET","POST"},
+        app.MapMethods("/api/Shops/ExchangeMusic/{musicMasterId:long}",new[]{"GET","POST"},
             (HttpContext context,long musicMasterId)=>Exchange(context,musicMasterId,false));
-        app.MapMethods("/localap/api/Shops/ExchangeMusicScore/{liveMasterId:long}",new[]{"GET","POST"},
+        app.MapMethods("/api/Shops/ExchangeMusicScore/{liveMasterId:long}",new[]{"GET","POST"},
             (HttpContext context,long liveMasterId)=>Exchange(context,liveMasterId,true));
-        app.MapMethods("/localap/api/Shops/ExchangeMusicScoreAsync/{liveMasterId:long}",new[]{"GET","POST"},
+        app.MapMethods("/api/Shops/ExchangeMusicScoreAsync/{liveMasterId:long}",new[]{"GET","POST"},
             (HttpContext context,long liveMasterId)=>Exchange(context,liveMasterId,true));
     }
 }
