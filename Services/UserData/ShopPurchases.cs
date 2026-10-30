@@ -69,7 +69,8 @@ sealed partial class UserDataService
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             rows.Add(new object?[] { reader.GetInt64(0), reader.GetInt64(1), reader.GetInt32(2),
-                reader.GetInt32(3), reader.IsDBNull(4) ? null : reader.GetDateTime(4) });
+                // 客户端使用 JST 墙上时间比较 RePurchaseDate；数据库重置判断仍保留 UTC。
+                reader.GetInt32(3), reader.IsDBNull(4) ? null : reader.GetDateTime(4).Add(JapanStandardTimeOffset) });
         return rows;
     }
 
