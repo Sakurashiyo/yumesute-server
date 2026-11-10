@@ -37,6 +37,13 @@ static partial class ApiEndpointMappings
             await codec.WriteApiFramesAsync(context, new object?[] { true, registered.LinkageCode },
                 new object?[] { new object?[] { 120, new object?[] { registered.UserId } } }, Array.Empty<object?>(), Array.Empty<object?>());
         });
+        app.MapMethods("/api/Account/Delete", new[] { "GET", "POST" }, async context =>
+        {
+            var (result, userId) = await state.AccountService.DeleteAccountAsync(PayloadReaders.ReadApiToken(context));
+            var log = result[0] is true ? "level=INFO" : "level=WARN errorCode=ACCOUNT_DELETE_ENROLLED_CIRCLE";
+            await state.Logger.LogAsync($"{log} operation=account-delete userId={userId} requestId={context.TraceIdentifier} outcome={(result[0] is true ? "success" : "failed")}");
+            await codec.WriteApiResultAsync(context, result, "five-frame");
+        });
         app.MapPost("/api/Account/GetTakeOverAccount", async context =>
         {
             var payload = await AccountRecoveryPayloads.ReadAsync(context, codec, "LinkageCode", "Password");

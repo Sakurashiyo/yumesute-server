@@ -49,6 +49,7 @@ app.UseRouting();
 app.UseRequestLogging(state.Logger);
 app.MapApiEndpoints(state);
 app.MapAssetEndpoints(state);
+app.MapPhotoMediaEndpoints(state);
 app.MapRealtimeDebugEndpoints(state);
 app.MapGrpcService<RealtimeHubService>();
 

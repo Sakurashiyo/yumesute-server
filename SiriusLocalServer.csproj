@@ -79,4 +79,5 @@
   <ItemGroup>
     <EmbeddedResource Include="masterdata-export/tables/SenseMaster.json;masterdata-export/tables/SenseNotationMaster.json;masterdata-export/tables/StarActMaster.json;masterdata-export/tables/StarActConditionMaster.json;masterdata-export/tables/LeaderSenseMaster.json;masterdata-export/tables/EffectTriggerCharacterBaseGroupMaster.json;masterdata-export/tables/LiveSettingMaster.json;masterdata-export/tables/LiveDropFrameGroupMaster.json" LogicalName="Live.%(Filename)%(Extension)" />
   </ItemGroup>
+  <ItemGroup><EmbeddedResource Include="masterdata-export/tables/FilmItemMaster.json" LogicalName="Photo.FilmItemMaster.json" /></ItemGroup>
 </Project>

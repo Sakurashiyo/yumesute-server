@@ -2,177 +2,105 @@ using Npgsql;
 
 sealed partial class UserDataService
 {
+    static async Task EnsurePhotoAlbumAsync(NpgsqlConnection connection, long userId, NpgsqlTransaction? transaction = null)
+    {
+        await using var album = new NpgsqlCommand("""
+            with initialized as (
+              insert into user_photo_states(id,"userId",photo_category,current_count,max_count)
+              values($1,$2,1,1,1) on conflict ("userId",photo_category) do nothing returning id
+            )
+            insert into user_photo_album_arrangements(id,"userId",album_group_id,arrangement_type,is_public,layout_payload)
+            select $3,$2,1,1,false,$4 where not exists(
+              select 1 from user_photo_album_arrangements where "userId"=$2 and album_group_id=1)
+            on conflict do nothing;
+            """, connection, transaction);
+        album.Parameters.AddWithValue(UserScopedId(userId, 124001)); album.Parameters.AddWithValue(userId);
+        album.Parameters.AddWithValue(UserScopedId(userId, 125010));
+        album.Parameters.AddWithValue(MsgPack.Encode(new object?[] { Array.Empty<object?>() }));
+        await album.ExecuteNonQueryAsync();
+    }
+
+    public async Task<object?[]> GetPhotoAlbumMainPageAsync(HttpContext context, string? targetPublicId)
+    {
+        var actor = await RequireAuthenticatedUserAsync(context);
+        await using var connection = await database.OpenConnectionAsync();
+        long owner = actor;
+        if (!string.IsNullOrEmpty(targetPublicId))
+        {
+            await using var target = new NpgsqlCommand("select id from user_accounts where public_id=$1", connection);
+            target.Parameters.AddWithValue(targetPublicId);
+            if (await target.ExecuteScalarAsync() is not long found) return new object?[] { null, false };
+            owner = found;
+        }
+        await EnsurePhotoAlbumAsync(connection, owner);
+        var albums = await ReadPhotoStatesAsync(connection, owner);
+        var album = albums.Single(row => Convert.ToInt32(row[1]) == 1);
+        var pages = await ReadPhotoAlbumArrangementsAsync(connection, owner);
+        var page = pages.Single(row => Convert.ToInt64(row[1]) == Convert.ToInt32(album[2]));
+        if (owner != actor && page[3] is not true) return new object?[] { null, false };
+        return new object?[] { new object?[] { page[0], album[0], album[1], page[1], page[2], page[3], page[4], page[5] }, true };
+    }
+
     public async Task<object?[]> ArrangePhotoAlbumAsync(HttpContext context, object? payload, int arrangementType)
     {
-        var userId = await GetCurrentUserIdAsync(context);
-        var values = payload as object?[] ?? Array.Empty<object?>();
-        var isPublic = GetBool(values, 0) ?? true;
-        var albumGroupId = GetLong(values, 1) ?? 1;
-        var rawLayout = values.ElementAtOrDefault(2);
-        var layout = DecodePhotoAlbumLayout(rawLayout);
-        var normalizedLayout = NormalizePhotoAlbumLayout(layout, arrangementType);
-        var encodedLayout = MsgPack.Encode(normalizedLayout);
-        var arrangementId = userId is long currentUserId
-            ? UserScopedId(currentUserId, 125000 + albumGroupId * 10 + arrangementType)
-            : Random.Shared.Next(300000, 399999);
-
-        if (userId is not null)
+        var userId = await RequireAuthenticatedUserAsync(context);
+        if (payload is not object?[] { Length: 4 } values || values[0] is not bool publishing
+            || GetLong(values, 1) is not long page || page != 1 || values[2] is not byte[] encoded
+            || encoded.Length > 256 * 1024 || values[3] is not null)
+            throw PhotoFailure(PhotoErrors.InvalidRequest, 400);
+        // 首版只支持已解锁的第一页与默认主题；未知主题不能静默忽略。
+        object? decoded;
+        try { decoded = MsgPack.Decode(encoded); }
+        catch (InvalidDataException error) { throw new BadHttpRequestException(PhotoErrors.InvalidRequest, 400, error); }
+        if (decoded is not object?[] { Length: 1 } layout || layout[0] is not object?[] rows || rows.Length > 100)
+            throw PhotoFailure(PhotoErrors.InvalidRequest, 400);
+        await using var connection = await database.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await LockLessonUserAsync(connection, transaction, userId);
+        await EnsurePhotoAlbumAsync(connection, userId, transaction);
+        var photos = await ReadPhotoRecordsAsync(connection, userId);
+        var normalized = new List<object?>();
+        foreach (var value in rows)
         {
-            await EnsureDefaultUserDataAsync(userId.Value);
-            await using var connection = await database.OpenConnectionAsync();
-            await using var command = new NpgsqlCommand(
-                """
-                insert into user_photo_album_arrangements (
-                  id, "userId", album_group_id, arrangement_type, is_public, layout_payload, updated_at
-                )
-                values ($1, $2, $3, $4, $5, $6, now())
-                on conflict ("userId", album_group_id, arrangement_type)
-                do update set is_public = excluded.is_public,
-                              layout_payload = excluded.layout_payload,
-                              updated_at = now()
-                returning id
-                """,
-                connection);
-            command.Parameters.AddWithValue(arrangementId);
-            command.Parameters.AddWithValue(userId.Value);
-            command.Parameters.AddWithValue(albumGroupId);
-            command.Parameters.AddWithValue(arrangementType);
-            command.Parameters.AddWithValue(isPublic);
-            command.Parameters.AddWithValue(encodedLayout);
-            var returnedId = await command.ExecuteScalarAsync();
-            if (returnedId is long id) arrangementId = id;
+            if (value is not object?[] row || row.Length != (arrangementType == 1 ? 5 : 12)
+                || GetLong(row, 0) is not long photoId)
+                throw PhotoFailure(PhotoErrors.InvalidRequest, 400);
+            var photo = photos.SingleOrDefault(photo => Convert.ToInt64(photo[0]) == photoId)
+                ?? throw PhotoFailure(PhotoErrors.NotFound, 404);
+            if (arrangementType == 2 && Enumerable.Range(4, 4).Any(index => row[index] switch
+                { double value => !double.IsFinite(value), float value => !float.IsFinite(value),
+                  byte or sbyte or short or ushort or int or uint or long => false, _ => true }))
+                throw PhotoFailure(PhotoErrors.InvalidRequest, 400);
+            var copy = (object?[])row.Clone();
+            copy[arrangementType == 1 ? 1 : 2] = photo[1];
+            copy[arrangementType == 1 ? 2 : 3] = photo[2];
+            normalized.Add(copy);
         }
-
-        var presentData = new List<object?>
+        var bytes = MsgPack.Encode(new object?[] { normalized.ToArray() });
+        var pageId = UserScopedId(userId, 125010);
+        await using (var save = new NpgsqlCommand("""
+            insert into user_photo_album_arrangements(id,"userId",album_group_id,arrangement_type,is_public,layout_payload)
+            values($3,$1,$2,$4,$5,$6)
+            on conflict(id) do update set arrangement_type=excluded.arrangement_type,
+              is_public=excluded.is_public,layout_payload=excluded.layout_payload,updated_at=now();
+            """, connection, transaction))
         {
-            DataObject(125, new object?[]
-            {
-                arrangementId,
-                albumGroupId,
-                arrangementType,
-                isPublic,
-                new MsgPack.Binary(encodedLayout),
-                null
-            }),
-            DataObject(48, new object?[] { Random.Shared.Next(126000000, 126999999), true, false, arrangementType, null, 11, 11 })
-        };
-
-        if (arrangementType == 1)
-        {
-            var firstPhoto = FirstPhotoId(normalizedLayout) ?? Random.Shared.Next(39000000, 39999999);
-            var fileName = BuildPhotoFileName(firstPhoto);
-            var sasToken = GameResults.BuildPhotoSasToken("photo");
-            var thumbnailSasToken = GameResults.BuildPhotoSasToken("thumbnail");
-
-            presentData.Add(DataObject(123, new object?[]
-            {
-                firstPhoto,
-                fileName,
-                sasToken,
-                null,
-                false,
-                albumGroupId,
-                1,
-                5,
-                null,
-                DateTime.UtcNow,
-                thumbnailSasToken,
-                new object?[] { 404, 104 },
-                new object?[] { 404, 104 },
-                0
-            }));
-            presentData.Add(DataObject(124, new object?[] { UserScopedId(userId ?? 1, 124000 + albumGroupId), 1, 1, 1 }));
-            presentData.Add(DataObject(48, new object?[] { Random.Shared.Next(126000000, 126999999), false, false, 4, null, 12, 12 }));
-            presentData.Add(DataObject(48, new object?[] { 126984517L, false, false, 14, null, 42, 42 }));
+            save.Parameters.AddWithValue(userId); save.Parameters.AddWithValue(page); save.Parameters.AddWithValue(pageId);
+            save.Parameters.AddWithValue(arrangementType); save.Parameters.AddWithValue(publishing); save.Parameters.AddWithValue(bytes);
+            await save.ExecuteNonQueryAsync();
         }
-
-        return presentData.ToArray();
-    }
-
-    static object?[] DecodePhotoAlbumLayout(object? rawLayout)
-    {
-        if (rawLayout is byte[] bytes && bytes.Length > 0)
+        var present = new List<object?> { DataObject(125, new object?[] { pageId, page, arrangementType, publishing, new MsgPack.Binary(bytes), null }) };
+        foreach (var photo in photos)
         {
-            return MsgPack.Decode(bytes) as object?[] ?? Array.Empty<object?>();
+            photo[5] = rows.Cast<object?[]>().Any(row => GetLong(row, 0) == Convert.ToInt64(photo[0])) ? 1 : null;
+            await using var update = new NpgsqlCommand("update user_photo_media set row_payload=$2 where photo_id=$1", connection, transaction);
+            update.Parameters.AddWithValue(Convert.ToInt64(photo[0])); update.Parameters.AddWithValue(MsgPack.Encode(photo));
+            await update.ExecuteNonQueryAsync();
+            present.Add(DataObject(123, photo));
         }
-
-        return rawLayout as object?[] ?? Array.Empty<object?>();
-    }
-
-    static object?[] NormalizePhotoAlbumLayout(object?[] layout, int arrangementType)
-    {
-        var rows = layout.Length == 1 && layout[0] is object?[] nestedRows
-            ? nestedRows
-            : layout;
-
-        var normalizedRows = rows
-            .OfType<object?[]>()
-            .Select(row => arrangementType == 2
-                ? NormalizeDetailPhotoAlbumRow(row)
-                : NormalizeSimplePhotoAlbumRow(row))
-            .ToArray();
-
-        return new object?[] { normalizedRows };
-    }
-
-    static object?[] NormalizeSimplePhotoAlbumRow(object?[] row)
-    {
-        var photoId = GetLong(row, 0) ?? 0;
-        return new object?[]
-        {
-            photoId,
-            BuildPhotoFileName(photoId),
-            GameResults.BuildPhotoSasToken("photo"),
-            GetLong(row, 3) ?? 0,
-            row.ElementAtOrDefault(4)
-        };
-    }
-
-    static object?[] NormalizeDetailPhotoAlbumRow(object?[] row)
-    {
-        var photoId = GetLong(row, 0) ?? 0;
-        return new object?[]
-        {
-            photoId,
-            GetLong(row, 1) ?? 1,
-            BuildPhotoFileName(photoId),
-            GameResults.BuildPhotoSasToken("photo"),
-            ReadDouble(row, 4),
-            ReadDouble(row, 5),
-            ReadDouble(row, 6),
-            ReadDouble(row, 7, 1.0),
-            GetLong(row, 8) ?? 0,
-            GetBool(row, 9) ?? true,
-            GetBool(row, 10) ?? false,
-            row.ElementAtOrDefault(11)
-        };
-    }
-
-    static long? FirstPhotoId(object?[] normalizedLayout)
-    {
-        var rows = normalizedLayout.ElementAtOrDefault(0) as object?[];
-        var firstRow = rows?.OfType<object?[]>().FirstOrDefault();
-        return firstRow is null ? null : GetLong(firstRow, 0);
-    }
-
-    static double ReadDouble(object?[] values, int index, double defaultValue = 0.0)
-    {
-        if (index >= values.Length) return defaultValue;
-        return values[index] switch
-        {
-            double value => value,
-            float value => value,
-            int value => value,
-            long value => value,
-            string text when double.TryParse(text, out var value) => value,
-            _ => defaultValue
-        };
-    }
-
-    static string BuildPhotoFileName(long photoId)
-    {
-        return photoId > 0
-            ? $"{photoId:x8}-local-photo.jpg"
-            : $"{Guid.NewGuid():D}.jpg";
+        await transaction.CommitAsync();
+        context.RequestServices.GetRequiredService<ILogger<UserDataService>>().LogInformation(
+            "相册保存完成 operation=photo-album-save userId={UserId} page={Page} photoCount={PhotoCount} outcome=success", userId, page, rows.Length);
+        return present.ToArray();
     }
 }

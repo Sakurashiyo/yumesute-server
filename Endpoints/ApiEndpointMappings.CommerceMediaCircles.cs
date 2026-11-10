@@ -14,26 +14,26 @@ static partial class ApiEndpointMappings
         {
             var targetUserId = context.Request.Query["targetUserId"].FirstOrDefault();
             await logger.LogAsync($"photo-get-album-main-page targetUserId={targetUserId}");
-            await codec.WriteApiResultAsync(context, new object?[] { null, false });
+            await codec.WriteApiResultAsync(context, await state.UserDataService.GetPhotoAlbumMainPageAsync(context, targetUserId));
         });
 
         app.MapPost("/api/Photo/AlbumSimpleArranging", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
-            await logger.LogAsync($"photo-album-simple-arranging payload={ValueFormatter.Format(body)}");
+            await logger.LogAsync("photo-album-simple-arranging");
             await codec.WriteApiFramesAsync(
                 context,
                 new object?[] { true },
                 await state.UserDataService.ArrangePhotoAlbumAsync(context, body, arrangementType: 1),
                 Array.Empty<object?>(),
-                new object?[] { new object?[] { 0, new object?[] { 11, 11 } } },
+                Array.Empty<object?>(),
                 "present-lz4-when-not-empty-five-frame");
         });
 
         app.MapPost("/api/Photo/AlbumDetailArranging", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
-            await logger.LogAsync($"photo-album-detail-arranging payload={ValueFormatter.Format(body)}");
+            await logger.LogAsync("photo-album-detail-arranging");
             await codec.WriteApiFramesAsync(
                 context,
                 new object?[] { true },
@@ -46,24 +46,16 @@ static partial class ApiEndpointMappings
         app.MapPost("/api/Photos/GeneratePhoto", async context =>
         {
             var body = await codec.ReadRequestBodyAsync(context);
-            var itemMasterId = ExtractFirstLong(body) ?? 510005L;
-            var photoId = Random.Shared.Next(39000000, 39999999);
-            var fileName = $"{Guid.NewGuid():D}.jpg";
-            var sasToken = GameResults.BuildPhotoSasToken("photo");
-            await logger.LogAsync($"photos-generate-photo photoId={photoId} itemMasterId={itemMasterId} fileName={fileName}");
-            await codec.WriteApiFramesAsync(
-                context,
-                GameResults.GeneratePhotoResult(photoId, fileName, sasToken),
-                GameResults.GeneratePhotoPresentData(photoId, fileName, sasToken, itemMasterId),
-                Array.Empty<object?>(),
-                GameResults.GeneratePhotoNotifications(),
-                "result-present-lz4-five-frame");
+            var photo = await state.UserDataService.GenerateStoredPhotoAsync(context, body);
+            await codec.WriteApiFramesAsync(context, photo.Result, photo.Present, Array.Empty<object?>(),
+                Array.Empty<object?>(), "result-present-lz4-five-frame");
         });
 
         app.MapMethods("/api/Photos/FinishGeneratePhoto", new[] { "GET", "POST" }, async context =>
         {
             var body = context.Request.Method == "POST" ? await codec.ReadRequestBodyAsync(context) : null;
-            await logger.LogAsync($"photos-finish-generate-photo payload={ValueFormatter.Format(body)}");
+            await state.UserDataService.GetPhotoAlbumMainPageAsync(context, null);
+            await logger.LogAsync("photos-finish-generate-photo outcome=success");
             await codec.WriteApiResultAsync(context, new object?[] { true }, "five-frame");
         });
 

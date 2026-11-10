@@ -194,6 +194,7 @@ static class DatabaseMigrator
         await using var connection = await database.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(Sql, connection);
         await command.ExecuteNonQueryAsync();
+        await PhotoSchema.MigrateAsync(connection);
         await CircleSchema.MigrateAsync(connection);
         await CharacterMissionSchema.MigrateAsync(connection);
         await MigrateLiveSettlementAsync(connection);

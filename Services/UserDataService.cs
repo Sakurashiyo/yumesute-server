@@ -646,6 +646,7 @@ sealed partial class UserDataService
         var restriction = await ReadRestrictionAsync(connection, userId);
         var albums = await ReadAlbumsAsync(connection, userId);
         var photoRecords = await ReadPhotoRecordsAsync(connection, userId);
+        await EnsurePhotoAlbumAsync(connection, userId);
         var photoStates = await ReadPhotoStatesAsync(connection, userId);
         var photoAlbumArrangements = await ReadPhotoAlbumArrangementsAsync(connection, userId);
         var musicVideoWatchStates = await ReadMusicVideoWatchStatesAsync(connection, userId);
@@ -1509,47 +1510,12 @@ sealed partial class UserDataService
 
     static async Task<List<object?[]>> ReadPhotoRecordsAsync(NpgsqlConnection connection, long userId)
     {
-        await using var command = new NpgsqlCommand(
-            """
-            select id,
-                   file_name,
-                   read_sas_token,
-                   write_sas_token,
-                   is_favorite,
-                   album_group_id,
-                   source_type,
-                   source_master_id,
-                   created_at
-            from user_photo_records
-            where "userId" = $1
-            order by created_at, id
-            """,
-            connection);
+        await using var command = new NpgsqlCommand("select row_payload from user_photo_media where \"userId\"=$1 order by photo_id", connection);
         command.Parameters.AddWithValue(userId);
-
-        var result = new List<object?[]>();
+        var rows = new List<object?[]>();
         await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            result.Add(new object?[]
-            {
-                reader.GetInt64(0),
-                reader.GetString(1),
-                reader.IsDBNull(2) ? GameResults.BuildPhotoSasToken("photo") : reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetString(3),
-                reader.GetBoolean(4),
-                GetNullableInt64(reader, 5),
-                reader.GetInt32(6),
-                GetNullableInt64(reader, 7) ?? 5,
-                null,
-                reader.GetDateTime(8),
-                GameResults.BuildPhotoSasToken("thumbnail"),
-                new object?[] { 404, 104 },
-                new object?[] { 404, 104 },
-                0
-            });
-        }
-        return result;
+        while (await reader.ReadAsync()) rows.Add((object?[])MsgPack.Decode((byte[])reader[0])!);
+        return rows;
     }
 
     static async Task<List<object?[]>> ReadPhotoStatesAsync(NpgsqlConnection connection, long userId)

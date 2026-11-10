@@ -34,7 +34,7 @@
     {
         return app.Use(async (context, next) =>
         {
-            await logger.LogAsync($"{context.Request.Method} {context.Request.Path}{context.Request.QueryString} content-type={context.Request.ContentType ?? ""} accept={context.Request.Headers.Accept}");
+            await logger.LogAsync($"{context.Request.Method} {context.Request.Path}{(context.Request.Path.StartsWithSegments("/photo-content") ? "" : context.Request.QueryString.ToString())} content-type={context.Request.ContentType ?? ""} accept={context.Request.Headers.Accept}");
             try
             {
                 await next();

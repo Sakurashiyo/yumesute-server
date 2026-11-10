@@ -13,7 +13,9 @@ sealed class ApiCodec
 
     static bool IsPrivateRequest(HttpContext context) =>
         context.Request.Path.Value?.Contains("UpdateBirthDate", StringComparison.OrdinalIgnoreCase) == true
-        || context.Request.Path.StartsWithSegments("/api/Account");
+        || context.Request.Path.StartsWithSegments("/api/Account")
+        || context.Request.Path.StartsWithSegments("/api/Photos")
+        || context.Request.Path.StartsWithSegments("/api/Photo");
 
     public async Task<object?> ReadRequestBodyAsync(HttpContext context)
     {
