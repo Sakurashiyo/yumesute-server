@@ -50,7 +50,7 @@ app.UseRequestLogging(state.Logger);
 app.MapApiEndpoints(state);
 app.MapAssetEndpoints(state);
 app.MapPhotoMediaEndpoints(state);
-app.MapRealtimeDebugEndpoints(state);
+if (config.RealtimeDebugEndpointsEnabled) app.MapRealtimeDebugEndpoints(state);
 app.MapGrpcService<RealtimeHubService>();
 
 app.MapFallback(async context =>

@@ -33,6 +33,10 @@
         }
     }
 
+    // 调试接口可冒充任意 hashUserId，仅在显式开启时注册。
+    public bool RealtimeDebugEndpointsEnabled =>
+        string.Equals(Optional("REALTIME_DEBUG_ENDPOINTS"), "true", StringComparison.OrdinalIgnoreCase);
+
     public string RealtimeBaseUrl => Optional("REALTIME_BASE_URL")
         ?? new UriBuilder(PublicBaseUrl) { Port = RealtimePort, Path = "", Query = "", Fragment = "" }.Uri.GetLeftPart(UriPartial.Authority);
 
